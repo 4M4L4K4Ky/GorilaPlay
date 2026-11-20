@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="fondo" cx="50%" cy="36%" r="72%">
+      <stop offset="0%" stop-color="#2d333c"/>
+      <stop offset="58%" stop-color="#1b1e24"/>
+      <stop offset="100%" stop-color="#0e1013"/>
+    </radialGradient>
+    <linearGradient id="oro" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f6d07a"/>
+      <stop offset="45%" stop-color="#dc9f31"/>
+      <stop offset="100%" stop-color="#9c6c18"/>
+    </linearGradient>
+    <linearGradient id="rojo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ef5b4c"/>
+      <stop offset="55%" stop-color="#c92b26"/>
+      <stop offset="100%" stop-color="#86150f"/>
+    </linearGradient>
+    <linearGradient id="pelo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#626a75"/>
+      <stop offset="100%" stop-color="#343a42"/>
+    </linearGradient>
+    <linearGradient id="hocico" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d3cbb9"/>
+      <stop offset="100%" stop-color="#9d9584"/>
+    </linearGradient>
+    <filter id="sombra" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="16" result="b"/>
+      <feOffset in="b" dx="0" dy="14" result="o"/>
+      <feFlood flood-color="#000" flood-opacity="0.5"/>
+      <feComposite in2="o" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="recorte">
+      <rect x="32" y="32" width="960" height="960" rx="210"/>
+    </clipPath>
+  </defs>
+
+  <!-- fondo -->
+  <rect x="32" y="32" width="960" height="960" rx="210" fill="url(#fondo)"/>
+  <g clip-path="url(#recorte)">
+    <g stroke="#e0a83c" stroke-opacity="0.10" stroke-width="10">
+      <path d="M512 1000 L-80 520" fill="none"/>
+      <path d="M512 1000 L-40 380" fill="none"/>
+      <path d="M512 1000 L110 280" fill="none"/>
+      <path d="M512 1000 L310 220" fill="none"/>
+      <path d="M512 1000 L512 190" fill="none"/>
+      <path d="M512 1000 L714 220" fill="none"/>
+      <path d="M512 1000 L914 280" fill="none"/>
+      <path d="M512 1000 L1064 380" fill="none"/>
+      <path d="M512 1000 L1104 520" fill="none"/>
+    </g>
+  </g>
+
+  <!-- aro -->
+  <circle cx="512" cy="512" r="430" fill="none" stroke="url(#oro)" stroke-width="18"/>
+  <circle cx="512" cy="512" r="404" fill="none" stroke="#f3e9d2" stroke-opacity="0.16" stroke-width="5"/>
+  <g fill="#f3e9d2" fill-opacity="0.7">
+    <circle cx="512" cy="82" r="8"/><circle cx="742" cy="138" r="8"/>
+    <circle cx="886" cy="332" r="8"/><circle cx="886" cy="692" r="8"/>
+    <circle cx="742" cy="886" r="8"/><circle cx="512" cy="942" r="8"/>
+    <circle cx="282" cy="886" r="8"/><circle cx="138" cy="692" r="8"/>
+    <circle cx="138" cy="332" r="8"/><circle cx="282" cy="138" r="8"/>
+  </g>
+
+  <g filter="url(#sombra)">
+    <!-- orejas -->
+    <circle cx="272" cy="548" r="72" fill="url(#pelo)" stroke="#1c2026" stroke-width="11"/>
+    <circle cx="752" cy="548" r="72" fill="url(#pelo)" stroke="#1c2026" stroke-width="11"/>
+
+    <!-- cabeza -->
+    <path d="M512 262
+             C 366 262 244 348 232 496
+             C 220 646 288 752 386 790
+             C 442 812 582 812 638 790
+             C 736 752 804 646 792 496
+             C 780 348 658 262 512 262 Z"
+          fill="url(#pelo)" stroke="#1c2026" stroke-width="12"/>
+
+    <!-- brillo superior -->
+    <path d="M512 274 C 448 278 400 306 378 344
+             C 428 320 466 312 512 312
+             C 558 312 596 320 646 344
+             C 624 306 576 278 512 274 Z"
+          fill="#7c848f" fill-opacity="0.45"/>
+
+    <!-- ceño -->
+    <path d="M328 462 C 386 430 452 424 512 434
+             C 572 424 638 430 696 462
+             C 674 502 604 520 512 520
+             C 420 520 350 502 328 462 Z"
+          fill="#252a31"/>
+
+    <!-- ojos -->
+    <ellipse cx="426" cy="512" rx="56" ry="44" fill="#f7f0e1"/>
+    <ellipse cx="598" cy="512" rx="56" ry="44" fill="#f7f0e1"/>
+    <circle cx="440" cy="520" r="26" fill="#14171b"/>
+    <circle cx="612" cy="520" r="26" fill="#14171b"/>
+    <circle cx="450" cy="508" r="8" fill="#fff"/>
+    <circle cx="622" cy="508" r="8" fill="#fff"/>
+    <path d="M360 500 C 390 468 452 462 486 480" fill="none" stroke="#1c2026" stroke-width="16" stroke-linecap="round"/>
+    <path d="M664 500 C 634 468 572 462 538 480" fill="none" stroke="#1c2026" stroke-width="16" stroke-linecap="round"/>
+
+    <!-- hocico -->
+    <path d="M512 566
+             C 420 566 358 610 358 678
+             C 358 756 420 806 512 806
+             C 604 806 666 756 666 678
+             C 666 610 604 566 512 566 Z"
+          fill="url(#hocico)" stroke="#1c2026" stroke-width="10"/>
+    <ellipse cx="468" cy="660" rx="20" ry="27" fill="#23282f"/>
+    <ellipse cx="556" cy="660" rx="20" ry="27" fill="#23282f"/>
+    <path d="M512 692 C 512 726 460 734 444 710" fill="none" stroke="#23282f" stroke-width="11" stroke-linecap="round"/>
+    <path d="M512 692 C 512 726 564 734 580 710" fill="none" stroke="#23282f" stroke-width="11" stroke-linecap="round"/>
+    <ellipse cx="512" cy="630" rx="24" ry="15" fill="#8a8375" fill-opacity="0.75"/>
+
+    <!-- diadema -->
+    <path d="M258 486 C 274 306 376 200 512 200
+             C 648 200 750 306 766 486"
+          fill="none" stroke="url(#rojo)" stroke-width="56" stroke-linecap="round"/>
+    <path d="M258 486 C 274 306 376 200 512 200
+             C 648 200 750 306 766 486"
+          fill="none" stroke="#f3e9d2" stroke-opacity="0.9" stroke-width="14" stroke-linecap="round"/>
+
+    <!-- cascos -->
+    <rect x="172" y="440" width="170" height="222" rx="80" fill="url(#rojo)" stroke="#1c2026" stroke-width="12"/>
+    <rect x="682" y="440" width="170" height="222" rx="80" fill="url(#rojo)" stroke="#1c2026" stroke-width="12"/>
+    <rect x="192" y="462" width="130" height="178" rx="62" fill="none" stroke="url(#oro)" stroke-width="9"/>
+    <rect x="702" y="462" width="130" height="178" rx="62" fill="none" stroke="url(#oro)" stroke-width="9"/>
+    <circle cx="257" cy="552" r="36" fill="#f3e9d2"/>
+    <circle cx="767" cy="552" r="36" fill="#f3e9d2"/>
+    <circle cx="257" cy="552" r="19" fill="#c92b26"/>
+    <circle cx="767" cy="552" r="19" fill="#c92b26"/>
+    <path d="M200 496 C 220 468 250 456 276 456" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="10" stroke-linecap="round"/>
+    <path d="M710 496 C 730 468 760 456 786 456" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="10" stroke-linecap="round"/>
+  </g>
+</svg>
