@@ -15,6 +15,8 @@ mkdir -p "$BIN" "$DATOS" "$APPS" "$ICONOS/512x512/apps" "$ICONOS/256x256/apps"
 
 install -m 755 "$ORIGEN/descargar-playlist" "$BIN/descargar-playlist"
 install -m 755 "$ORIGEN/spotify_descargar.py" "$DATOS/spotify_descargar.py"
+install -m 755 "$ORIGEN/caratulas.py" "$DATOS/caratulas.py"
+install -m 755 "$ORIGEN/caratulas.py" "$BIN/gorilaplay-caratulas"
 
 if [ -f "$RAIZ/assets/icono-512.png" ]; then
     install -m 644 "$RAIZ/assets/icono-512.png" "$ICONOS/512x512/apps/gorilaplay.png"
@@ -44,4 +46,5 @@ echo
 echo "Dependencias que deben estar instaladas:"
 echo "  yt-dlp   ->  pipx install yt-dlp   (o pip install --user yt-dlp)"
 echo "  ffmpeg   ->  sudo dnf install ffmpeg  (o apt install ffmpeg)"
+echo "  mutagen  ->  sudo dnf install python3-mutagen  (o pip install --user mutagen)"
 echo "  python3, kdialog, konsole"

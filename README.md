@@ -29,6 +29,11 @@ Formatos: MP3 320 kbps, MP3 192 kbps, audio original m4a o vídeo hasta 1080p.
 - Diálogos nativos: sin terminal ni comandos para el uso diario.
 - Crea una subcarpeta por playlist con el nombre de la lista.
 - Nombra los archivos como `Artista - Título.mp3` e incrusta carátula y etiquetas.
+- **Carátula propia en cada canción**: si la descarga no trae una buena, la busca
+  en Deezer/iTunes y, si no la encuentra, usa la de la lista de Spotify o la
+  miniatura de YouTube.
+- **Pone carátula a una carpeta ya descargada**: útil para discos bajados antes
+  de tener esta función o para música que ya tenías.
 - Registro de descargas: lo que ya has bajado no se vuelve a descargar.
 - Log de cada ejecución para poder revisar errores.
 - Al buscar en YouTube descarta lyric, cover, karaoke, en vivo, etc., y prefiere
@@ -48,6 +53,9 @@ pip install --user yt-dlp
 sudo dnf install ffmpeg        # Fedora / Nobara
 sudo apt install ffmpeg        # Debian / Ubuntu
 
+# carátulas (Python + mutagen)
+sudo dnf install python3-mutagen    # o: pip install --user mutagen
+
 # diálogos y terminal
 sudo dnf install kdialog konsole
 ```
@@ -61,7 +69,8 @@ cd GorilaPlay
 ```
 
 Queda en el menú de aplicaciones como **GorilaPlay**. También puedes lanzarlo
-desde una terminal con `descargar-playlist`.
+desde una terminal con `descargar-playlist` y poner carátulas con
+`gorilaplay-caratulas <carpeta>`.
 
 ## Instalación en Windows
 
@@ -83,16 +92,21 @@ La primera vez descarga `yt-dlp.exe` automáticamente en `windows\bin\`.
 Si Windows SmartScreen avisa, elige *Más información → Ejecutar de todas formas*
 (el script es texto plano, puedes leerlo antes).
 
+El botón **CARÁTULAS** hace lo mismo que en Linux: elige una carpeta y pone
+portada a cada mp3/m4a que no la tenga (necesita `ffmpeg` y `ffprobe`, los dos
+vienen en el paquete de Gyan.FFmpeg).
+
 > La versión de Windows está portada pero menos probada que la de Linux. Si algo
 > falla, abre un issue con el mensaje de error.
 
 ## Uso
 
 1. Abre **GorilaPlay**.
-2. Pega la URL de la playlist.
-3. Elige el formato.
-4. Elige la carpeta de destino (por defecto `~/Música`).
-5. Pulsa **Descargar** y espera.
+2. Elige **Descargar vídeo o playlist**.
+3. Pega la URL de la playlist.
+4. Elige el formato.
+5. Elige la carpeta de destino (por defecto `~/Música`).
+6. Pulsa **Descargar** y espera.
 
 Resultado:
 
@@ -111,6 +125,37 @@ de pistas públicas y busca cada una en YouTube, comparando duración y título.
 
 Limitación: la vista pública de Spotify muestra como máximo **100 pistas**.
 Si tu playlist es más larga, se descargarán las 100 primeras (te avisa en el log).
+
+### Carátulas
+
+Cada canción se queda con la portada del disco incrustada dentro del archivo (no
+como imagen suelta), así que se ve en cualquier reproductor, en el móvil o en el
+coche.
+
+Al descargar se hace solo. Para música que ya tienes, GorilaPlay también pone
+carátulas a una carpeta entera:
+
+1. Abre **GorilaPlay**.
+2. Elige **Poner carátula a las canciones de una carpeta**.
+3. Selecciona la carpeta.
+4. Elige si solo toca las que no tienen carátula o si las reemplaza todas.
+
+Desde una terminal:
+
+```bash
+gorilaplay-caratulas ~/Música/"Mi playlist"                # solo las que faltan
+gorilaplay-caratulas ~/Música/"Mi playlist" --reemplazar   # todas otra vez
+gorilaplay-caratulas ~/Música/"Mi playlist" --solo-probar  # ver qué encontraría
+```
+
+Busca primero en Deezer y después en iTunes, comparando título, artista y
+duración; si no hay coincidencia clara, usa la miniatura de YouTube
+(`--sin-youtube` para desactivarlo). También rellena título, artista y álbum
+cuando faltan (`--sin-etiquetas` para no tocarlos).
+
+Soporta MP3, M4A, FLAC, OGG y OPUS. No recomprime el audio: solo le añade la
+imagen y las etiquetas. Si una canción se queda sin carátula, el programa lo
+dice al final con la lista de las que han fallado.
 
 ### Datos y registros
 
@@ -137,12 +182,18 @@ añade `--cookies-from-browser firefox` en el script.
 Es límite de YouTube. El script ya espera un segundo entre peticiones; puedes
 subir `--sleep-requests` para ir más despacio.
 
+**Alguna canción se queda sin carátula**
+Deezer/iTunes no la tienen con ese título exacto. Prueba con
+`gorilaplay-caratulas <carpeta> --reemplazar` (a veces la encuentra al segundo
+intento) o ponle la portada a mano con tu reproductor. También puedes probar a
+renombrar el archivo como `Artista - Título.mp3`, que es lo que usa para buscar.
+
 ## Estructura del repositorio
 
 ```
 GorilaPlay/
 ├── assets/          icono (svg, png 1024/512/256, ico)
-├── linux/           lanzador bash + descarga de Spotify + instalador
+├── linux/           lanzador bash + Spotify + carátulas + instalador
 ├── windows/         port en PowerShell + lanzador .cmd
 ├── LICENSE
 └── README.md

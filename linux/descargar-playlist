@@ -3,16 +3,82 @@
 # Interfaz KDE: kdialog + konsole. Motor: yt-dlp.
 set -u
 
-VERSION="1.0"
+VERSION="1.1"
 YTDLP="${YTDLP:-$(command -v yt-dlp || echo "$HOME/.local/bin/yt-dlp")}"
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SPOTIFY="$HOME/.local/share/gorilaplay/spotify_descargar.py"
+DATOS="$HOME/.local/share/gorilaplay"
+SPOTIFY="$DATOS/spotify_descargar.py"
 [ -f "$SPOTIFY" ] || SPOTIFY="$AQUI/spotify_descargar.py"
+CARATULAS="$DATOS/caratulas.py"
+[ -f "$CARATULAS" ] || CARATULAS="$AQUI/caratulas.py"
 ESTADO="$HOME/.local/state/gorilaplay"
 ARCHIVO="$ESTADO/descargados.txt"
 TITULO="GorilaPlay"
 mkdir -p "$ESTADO"
 
+# 0. Qué hacemos
+ACCION=$(kdialog --title "$TITULO" --menu "¿Qué quieres hacer?" \
+    descargar "Descargar vídeo o playlist (YouTube, Spotify...)" \
+    caratulas "Poner carátula a las canciones de una carpeta") || exit 0
+
+# ---------------------------------------------------------------- carátulas
+if [ "$ACCION" = caratulas ]; then
+    if [ ! -f "$CARATULAS" ]; then
+        kdialog --title "$TITULO" --error "No encuentro caratulas.py."
+        exit 1
+    fi
+    if ! command -v python3 >/dev/null || ! python3 -c 'import mutagen' 2>/dev/null; then
+        kdialog --title "$TITULO" --error "Falta mutagen (Python).
+
+Instálalo con:  sudo dnf install python3-mutagen
+o bien:         pip install --user mutagen"
+        exit 1
+    fi
+
+    INICIO="$HOME/Música"
+    [ -d "$INICIO" ] || INICIO="$HOME"
+    DESTINO=$(kdialog --title "$TITULO - carpeta de música" \
+        --getexistingdirectory "$INICIO") || exit 0
+
+    MODO=$(kdialog --title "$TITULO" --radiolist \
+        "¿Qué canciones quieres tocar?" \
+        faltantes "Solo las que no tienen carátula" on \
+        todas     "Todas, reemplazando la carátula actual" off) || exit 0
+    MODIFICADOR=""
+    [ "$MODO" = todas ] && MODIFICADOR="--reemplazar"
+
+    LOG="$ESTADO/caratulas-$(date +%Y%m%d-%H%M%S).log"
+    RUNNER="$(mktemp "$ESTADO/runner-XXXXXX.sh")"
+    {
+        echo '#!/usr/bin/env bash'
+        printf 'echo "GorilaPlay %s - carátulas"\necho\n' "$VERSION"
+        printf 'echo "Carpeta: %s"\necho\n' "$DESTINO"
+        printf 'python3 %q %q %s 2>&1 | tee %q\n' \
+            "$CARATULAS" "$DESTINO" "$MODIFICADOR" "$LOG"
+        echo 'rc=${PIPESTATUS[0]}'
+    } > "$RUNNER"
+    {
+        echo 'echo'
+        echo 'if [ "$rc" -eq 0 ]; then'
+        printf '    notify-send -i folder-download %q "Carátulas puestas"\n' "$TITULO"
+        echo '    sleep 2'
+        echo 'else'
+        printf '    echo "Algunas canciones se han quedado sin carátula. Log: %s"\n' "$LOG"
+        printf '    notify-send -i dialog-information %q "Carátulas terminadas con avisos"\n' "$TITULO"
+        echo '    read -r -p "Pulsa Enter para cerrar..." _'
+        echo 'fi'
+        printf 'rm -f %q\n' "$RUNNER"
+    } >> "$RUNNER"
+    chmod +x "$RUNNER"
+    if command -v konsole >/dev/null; then
+        konsole --title "$TITULO" -e bash "$RUNNER"
+    else
+        x-terminal-emulator -e bash "$RUNNER" 2>/dev/null || bash "$RUNNER"
+    fi
+    exit 0
+fi
+
+# ---------------------------------------------------------------- descarga
 if [ ! -x "$YTDLP" ]; then
     kdialog --title "$TITULO" --error "No encuentro yt-dlp.
 Instálalo con:  pipx install yt-dlp"

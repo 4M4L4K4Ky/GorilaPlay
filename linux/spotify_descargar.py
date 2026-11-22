@@ -4,11 +4,19 @@
 
 Lee la lista de pistas de la pagina de Spotify (no necesita cuenta ni API) y
 busca cada cancion en YouTube con yt-dlp, eligiendo el resultado con duracion
-y titulo mas parecidos.
+y titulo mas parecidos. Cada archivo se queda con su caratula: se busca en
+Deezer/iTunes y, si no hay coincidencia, se usa la portada de la lista.
 
 Uso: spotify_descargar.py <url_spotify> <carpeta_destino> [bitrate] [--limit N]
 """
 import sys, os, re, json, subprocess, unicodedata, difflib, urllib.request
+
+# caratulas.py vive junto a este script; puede faltar en instalaciones viejas
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import caratulas
+except ImportError:
+    caratulas = None
 
 YTDLP = os.path.expanduser("~/.local/bin/yt-dlp")
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -28,7 +36,7 @@ def limpiar(s):
 
 
 def obtener(url):
-    """Devuelve (nombre, [(titulo, artista, duracion_segundos)])."""
+    """Devuelve (nombre, portada, [(titulo, artista, duracion_segundos)])."""
     m = re.search(r"(playlist|album|track|artist)/([A-Za-z0-9]+)", url)
     if not m:
         raise SystemExit("URL de Spotify no reconocida")
@@ -56,6 +64,15 @@ def obtener(url):
     ent = next(buscar(data, "entity"), {}) or {}
     nombre = ent.get("name") or ent.get("title") or "Spotify"
 
+    # portada de la lista (respaldo para las pistas sin coincidencia)
+    portada = ""
+    for cover in buscar(ent, "coverArt"):
+        fuentes = (cover or {}).get("sources") or []
+        if fuentes:
+            portada = fuentes[-1].get("url") or ""
+            if portada:
+                break
+
     pistas = []
     for lista in buscar(data, "trackList"):
         for t in lista:
@@ -72,7 +89,7 @@ def obtener(url):
                        (ent.get("duration") or 0) / 1000.0))
     if not pistas:
         raise SystemExit("La lista de Spotify esta vacia o es privada")
-    return nombre, pistas
+    return nombre, portada, pistas
 
 
 def yt_search(query, n=10):
@@ -158,7 +175,7 @@ def main():
     url, base = args[0], os.path.expanduser(args[1])
     bitrate = args[2] if len(args) > 2 else "320"
 
-    nombre, pistas = obtener(url)
+    nombre, portada, pistas = obtener(url)
     if limite:
         pistas = pistas[:limite]
     carpeta = os.path.join(base, re.sub(r'[/\\:*?"<>|]', "_", nombre))
@@ -190,8 +207,18 @@ def main():
             fallos.append(titulo)
             continue
         etiquetar(archivo, titulo, artista, nombre)
+        if caratulas is not None:
+            try:
+                estado, detalle = caratulas.poner(
+                    archivo, titulo=titulo, artista=artista, album=nombre,
+                    dur=dur, reemplazar=True, portada_respaldo=portada)
+                portada_txt = detalle if estado == "ok" else "sin caratula"
+            except Exception as e:
+                portada_txt = "caratula fallida: " + str(e)[:80]
+        else:
+            portada_txt = "sin caratula (falta caratulas.py)"
         cd = c.get("duration")
-        print(f"   ok  ({cd}s vs {dur:.0f}s)  {c.get('title')}")
+        print(f"   ok  ({cd}s vs {dur:.0f}s)  {c.get('title')}  [{portada_txt}]")
 
     print(f"\nTerminado. {len(pistas)-len(fallos)}/{len(pistas)} pistas.")
     if fallos:

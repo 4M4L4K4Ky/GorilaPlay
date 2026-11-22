@@ -159,9 +159,86 @@ function Elegir-Candidato($candidatos, [int]$dur, [string]$titulo, [string]$arti
     return $mejor
 }
 
+function FFprobeExe {
+    $cmd = Get-Command ffprobe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    return (Join-Path $BinDir "ffprobe.exe")
+}
+
+function Tiene-Caratula([string]$ruta) {
+    $ffp = FFprobeExe
+    if (-not (Test-Path $ffp)) { return $false }
+    $salida = & $ffp -v quiet -print_format json -show_streams -- $ruta 2>$null | Out-String
+    try { $datos = $salida | ConvertFrom-Json } catch { return $false }
+    foreach ($s in $datos.streams) {
+        if ($s.codec_type -eq "video" -and $s.disposition.attached_pic -eq 1) { return $true }
+    }
+    return $false
+}
+
+function Poner-Caratula([string]$ruta, [System.Windows.Forms.RichTextBox]$log) {
+    $base = [IO.Path]::GetFileNameWithoutExtension($ruta)
+    $artista = ""
+    $titulo = $base
+    if ($base -match "^(.*?) - (.*)$") { $artista = $Matches[1]; $titulo = $Matches[2] }
+
+    $consulta = ("$artista $titulo").Trim()
+    $cands = @()
+    try {
+        $url = "https://api.deezer.com/search?q=" + [uri]::EscapeDataString($consulta) + "&limit=8"
+        $r = Invoke-RestMethod -Uri $url -Headers @{ "User-Agent" = "Mozilla/5.0" } -TimeoutSec 20
+        $cands = @($r.data)
+    }
+    catch { $cands = @() }
+
+    $mejor = $null
+    $mejorP = -100.0
+    $tNorm = Normalizar $titulo
+    foreach ($c in $cands) {
+        if (-not $c.album.cover_xl) { continue }
+        $st = Similitud (Normalizar $c.title) $tNorm
+        $sa = Similitud (Normalizar $c.artist.name) (Normalizar $artista)
+        $p = 3.0 * $st + 1.6 * $sa
+        foreach ($w in @("acustico", "en vivo", "live", "cover", "karaoke", "instrumental", "lyric", "letra", "remix", "version")) {
+            if ((Normalizar $c.title) -like "*$w*" -and $tNorm -notlike "*$w*") { $p -= 0.9 }
+        }
+        if ($p -gt $mejorP) { $mejor = $c; $mejorP = $p }
+    }
+    if (-not $mejor) { return "" }
+    if ((Similitud (Normalizar $mejor.title) $tNorm) -lt 0.62) { return "" }
+
+    $ff = FFmpegExe
+    $id = [guid]::NewGuid().ToString("N")
+    $bajada = Join-Path $env:TEMP ("gp_bajada_$id")
+    $portada = Join-Path $env:TEMP ("gp_portada_$id.jpg")
+    try {
+        Invoke-WebRequest -Uri $mejor.album.cover_xl -OutFile $bajada -UseBasicParsing
+        & $ff -v error -y -i $bajada -vf "scale=600:600:force_original_aspect_ratio=decrease,pad=600:600:(ow-iw)/2:(oh-ih)/2:color=black" -q:v 3 -frames:v 1 $portada 2>$null
+        if (-not (Test-Path $portada)) { throw "no pude preparar la imagen" }
+
+        $tmp = $ruta + ".gp-tmp" + [IO.Path]::GetExtension($ruta)
+        $etiquetas = @("-metadata", "title=$titulo", "-metadata", "artist=$artista")
+        if ($mejor.album.title) { $etiquetas += @("-metadata", "album=$($mejor.album.title)") }
+        & $ff -v error -y -i $ruta -i $portada -map 0:a -map 1:v -c copy -disposition:v attached_pic `
+            -id3v2_version 3 -metadata:s:v "title=Album cover" -metadata:s:v "comment=Cover (front)" `
+            @etiquetas $tmp 2>$null
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $tmp)) {
+            Move-Item -Force $tmp $ruta
+        }
+        else {
+            Remove-Item -Force $tmp -ErrorAction SilentlyContinue
+            throw "ffmpeg no pudo incrustar la carátula"
+        }
+    }
+    finally {
+        Remove-Item -Force $bajada, $portada -ErrorAction SilentlyContinue
+    }
+    return ("$($mejor.album.title) · Deezer")
+}
+
 # ---------- interfaz ----------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "GorilaPlay 1.0"
+$form.Text = "GorilaPlay 1.1"
 $form.Size = New-Object System.Drawing.Size(760, 560)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(24, 27, 33)
@@ -207,12 +284,21 @@ $form.Controls.Add($txtDestino)
 
 $btnGo = New-Object System.Windows.Forms.Button
 $btnGo.Text = "DESCARGAR"
-$btnGo.SetBounds(20, 156, 700, 44)
+$btnGo.SetBounds(20, 156, 520, 44)
 $btnGo.BackColor = [System.Drawing.Color]::FromArgb(201, 43, 38)
 $btnGo.ForeColor = [System.Drawing.Color]::White
 $btnGo.FlatStyle = "Flat"
 $btnGo.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($btnGo)
+
+$btnCaratulas = New-Object System.Windows.Forms.Button
+$btnCaratulas.Text = "CARÁTULAS"
+$btnCaratulas.SetBounds(550, 156, 170, 44)
+$btnCaratulas.BackColor = [System.Drawing.Color]::FromArgb(38, 44, 54)
+$btnCaratulas.ForeColor = [System.Drawing.Color]::White
+$btnCaratulas.FlatStyle = "Flat"
+$btnCaratulas.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($btnCaratulas)
 
 $log = New-Object System.Windows.Forms.RichTextBox
 $log.SetBounds(20, 212, 700, 296)
@@ -294,6 +380,53 @@ $btnGo.Add_Click({
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "GorilaPlay", "OK", "Error") | Out-Null
     }
     finally { $btnGo.Enabled = $true }
+})
+
+$btnCaratulas.Add_Click({
+    $btnCaratulas.Enabled = $false
+    try {
+        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dlg.SelectedPath = $txtDestino.Text
+        if ($dlg.ShowDialog() -ne "OK") { return }
+        $carpeta = $dlg.SelectedPath
+        if (-not (Tiene-FFmpeg)) { throw "Falta ffmpeg. Instálalo con:  winget install Gyan.FFmpeg" }
+
+        $archivos = @(Get-ChildItem -Path $carpeta -Recurse -File |
+            Where-Object { $_.Extension -in ".mp3", ".m4a" })
+        if ($archivos.Count -eq 0) { throw "No hay archivos mp3 ni m4a en esa carpeta." }
+        Escribir "Carátulas: $($archivos.Count) archivos en $carpeta" $log
+        $i = 0; $ok = 0; $fallos = 0
+        foreach ($f in $archivos) {
+            $i++
+            if (Tiene-Caratula $f.FullName) {
+                Escribir "[$i/$($archivos.Count)] ya tiene carátula · $($f.Name)" $log
+                continue
+            }
+            try {
+                $detalle = Poner-Caratula $f.FullName $log
+                if ($detalle) {
+                    $ok++
+                    Escribir "[$i/$($archivos.Count)] ok ($detalle) · $($f.Name)" $log
+                }
+                else {
+                    $fallos++
+                    Escribir "[$i/$($archivos.Count)] sin resultados · $($f.Name)" $log
+                }
+            }
+            catch {
+                $fallos++
+                Escribir "[$i/$($archivos.Count)] error: $($_.Exception.Message) · $($f.Name)" $log
+            }
+        }
+        Escribir "" $log
+        Escribir "Carátulas: $ok puestas, $fallos sin carátula." $log
+        [System.Windows.Forms.MessageBox]::Show("Carátulas terminadas.`n`n$ok puestas, $fallos sin carátula.", "GorilaPlay") | Out-Null
+    }
+    catch {
+        Escribir ("ERROR: " + $_.Exception.Message) $log
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "GorilaPlay", "OK", "Error") | Out-Null
+    }
+    finally { $btnCaratulas.Enabled = $true }
 })
 
 [void]$form.ShowDialog()
