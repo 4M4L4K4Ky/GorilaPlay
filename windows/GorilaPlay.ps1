@@ -238,7 +238,7 @@ function Poner-Caratula([string]$ruta, [System.Windows.Forms.RichTextBox]$log) {
 
 # ---------- interfaz ----------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "GorilaPlay 1.1"
+$form.Text = "GorilaPlay 1.0.0"
 $form.Size = New-Object System.Drawing.Size(760, 560)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(24, 27, 33)
