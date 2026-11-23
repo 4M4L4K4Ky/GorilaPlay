@@ -137,6 +137,225 @@ function Pistas-Spotify([string]$url, [System.Windows.Forms.RichTextBox]$log) {
     return @{ Nombre = $nombre; Pistas = $lista }
 }
 
+function Pistas-Deezer([string]$url, [System.Windows.Forms.RichTextBox]$log) {
+    if ($url -notmatch '(playlist|album|track)/(\d+)') { throw "URL de Deezer no reconocida." }
+    $tipo = $Matches[1]; $id = $Matches[2]
+    $d = Invoke-RestMethod -Uri "https://api.deezer.com/$tipo/$id" -Headers @{ "User-Agent" = "Mozilla/5.0" } -TimeoutSec 30
+    if ($d.error) { throw "Deezer: $($d.error.message)" }
+
+    if ($tipo -eq "track") {
+        $nombre = if ($d.album.title) { $d.album.title } else { $d.title }
+        $pistas = @([pscustomobject]@{ Titulo = $d.title; Artista = $d.artist.name; Dur = [int]$d.duration; Portada = $d.album.cover_xl })
+        return @{ Nombre = $nombre; Pistas = $pistas; Portada = $d.album.cover_xl }
+    }
+
+    $nombre = if ($d.title) { $d.title } else { "Deezer" }
+    $portada = if ($d.cover_xl) { $d.cover_xl } else { $d.picture_xl }
+    $pistas = @()
+    $siguiente = "https://api.deezer.com/$tipo/$id/tracks?limit=100"
+    while ($siguiente -and $pistas.Count -lt 5000) {
+        $pag = Invoke-RestMethod -Uri $siguiente -Headers @{ "User-Agent" = "Mozilla/5.0" } -TimeoutSec 30
+        foreach ($t in @($pag.data)) {
+            if (-not $t.title) { continue }
+            $pt = if ($t.album.cover_xl) { $t.album.cover_xl } else { $portada }
+            $pistas += [pscustomobject]@{
+                Titulo = $t.title; Artista = $t.artist.name; Dur = [int]$t.duration; Portada = $pt
+            }
+        }
+        $siguiente = $pag.next
+    }
+    return @{ Nombre = $nombre; Pistas = $pistas; Portada = $portada }
+}
+
+function Pistas-YtDlp([string]$url, [System.Windows.Forms.RichTextBox]$log) {
+    $argumentos = @("--flat-playlist", "-J")
+    if ($url -match 'mixcloud\.com') { $argumentos += @("--extractor-args", "generic:impersonate") }
+    $argumentos += @($url, "--no-warnings")
+    $json = & $YtDlp @argumentos 2>$null
+    if (-not $json) {
+        $json = & $YtDlp --flat-playlist -J $url --no-warnings 2>$null
+    }
+    try { $d = $json | ConvertFrom-Json } catch { throw "yt-dlp no pudo leer ese enlace." }
+    if (-not $d) { throw "yt-dlp no pudo leer ese enlace." }
+    $entradas = if ($d.entries) { @($d.entries) } else { @($d) }
+    $nombre = if ($d.title) { $d.title } else { "Lista" }
+    $pistas = @()
+    foreach ($e in $entradas) {
+        if (-not $e -or -not $e.id) { continue }
+        $bruto = [string]$e.title
+        if (-not $bruto -and $e.url) {
+            # SoundCloud y Mixcloud devuelven las entradas sin titulo: se saca
+            # del slug de la direccion (sitio/artista/tema).
+            try {
+                $partes = ([uri]$e.url).AbsolutePath.Trim('/').Split('/')
+                if ($partes.Count -ge 2 -and $partes[-2] -ne 'sets') {
+                    $bruto = ($partes[-2] -replace '-', ' ') + " - " + ($partes[-1] -replace '-', ' ')
+                }
+            }
+            catch { }
+        }
+        $artista = ""; $titulo = $bruto
+        if ($bruto -match "^(.*?) - (.*)$") { $artista = $Matches[1]; $titulo = $Matches[2] }
+        if (-not $artista) { $artista = if ($e.channel) { [string]$e.channel } else { [string]$e.uploader } }
+        $dur = [int]($e.duration)
+        if ($dur -gt 21600) { continue }
+        $pistas += [pscustomobject]@{ Titulo = $titulo.Trim(); Artista = $artista.Trim(); Dur = $dur; Portada = "" }
+    }
+    return @{ Nombre = $nombre; Pistas = $pistas; Portada = "" }
+}
+
+function Pistas-Texto([string[]]$lineas, [string]$nombre) {
+    $pistas = @()
+    foreach ($linea in $lineas) {
+        $l = $linea.Trim().Trim("-•* ").Trim()
+        $l = $l -replace '^\d+[.)]\s*', ''
+        if (-not $l -or $l.StartsWith("#")) { continue }
+        $artista = ""; $titulo = $l
+        if ($l -match "^(.*?) - (.*)$") { $artista = $Matches[1]; $titulo = $Matches[2] }
+        $pistas += [pscustomobject]@{ Titulo = $titulo.Trim(); Artista = $artista.Trim(); Dur = 0; Portada = "" }
+    }
+    return @{ Nombre = $nombre; Pistas = $pistas; Portada = "" }
+}
+
+function Buscar-Candidatos([string]$fuente, [string]$consulta, [int]$n = 6) {
+    $prefijo = if ($fuente -eq "youtube") { "ytsearch" } else { "scsearch" }
+    $json = & $YtDlp --flat-playlist -J "$prefijo${n}:$consulta" --no-warnings 2>$null
+    try { $d = $json | ConvertFrom-Json } catch { return @() }
+    $salida = @()
+    foreach ($e in @($d.entries)) {
+        if (-not $e -or -not $e.id) { continue }
+        if ($fuente -eq "youtube") {
+            $u = "https://www.youtube.com/watch?v=$($e.id)"
+        }
+        else {
+            $u = [string]$e.url
+            if (-not $u.StartsWith("http")) { continue }
+        }
+        $art = if ($e.channel) { [string]$e.channel } else { [string]$e.uploader }
+        $salida += [pscustomobject]@{
+            Fuente = $fuente; Id = [string]$e.id; Url = $u
+            Titulo = [string]$e.title; Artista = $art; Dur = [int]($e.duration)
+        }
+    }
+    return $salida
+}
+
+function Puntuar-Candidatos($candidatos, [string]$titulo, [string]$artista, [int]$dur) {
+    $mejor = $null; $mejorP = -100.0; $mejorSt = 0.0
+    $tNorm = Normalizar $titulo
+    foreach ($c in $candidatos) {
+        $cd = [int]$c.Dur
+        if ($dur -gt 0 -and $cd -gt 0) {
+            if ($cd -gt $dur * 2.5 -and ($cd - $dur) -gt 90) { continue }
+            if ($cd -lt $dur * 0.4 -and ($dur - $cd) -gt 45) { continue }
+        }
+        elseif ($dur -eq 0 -and $cd -gt 1200) { continue }
+
+        $ct = Normalizar $c.Titulo
+        $st = Similitud $ct $tNorm
+        $sa = if ($artista) { Similitud (Normalizar $c.Artista) (Normalizar $artista) } else { 0.0 }
+        $p = 3.0 * $st + 1.6 * $sa
+        if ($dur -gt 0 -and $cd -gt 0) {
+            $dd = [Math]::Abs($cd - $dur)
+            $p += 2.0 * $(if ($dd -le 2) { 1 } elseif ($dd -le 5) { .8 } elseif ($dd -le 10) { .55 } elseif ($dd -le 20) { .15 } else { 0 })
+        }
+        if (($c.Fuente -eq "youtube" -and $c.Artista -match 'Topic$') -or $c.Artista -match 'VEVO') { $p += 0.8 }
+        if ($c.Fuente -eq "soundcloud" -and $artista -and (Normalizar $c.Artista) -like "*$(Normalizar $artista)*") { $p += 0.5 }
+        foreach ($w in @('acustico','en vivo','live','cover','karaoke','instrumental','letra','lyric','sped up','reverb','8d','remix','version','tutorial','reaccion','reaction')) {
+            if ($ct -like "*$w*" -and $tNorm -notlike "*$w*") { $p -= 0.9 }
+        }
+        if ($p -gt $mejorP) { $mejor = $c; $mejorP = $p; $mejorSt = $st }
+    }
+    if (-not $mejor) { return $null }
+    return @{ Candidato = $mejor; Fiable = ($mejorSt -ge 0.62) }
+}
+
+function Buscar-Audio([string]$titulo, [string]$artista, [int]$dur, [System.Windows.Forms.RichTextBox]$log) {
+    $consultas = @()
+    if ($artista) { $consultas += ("$artista $titulo").Trim() }
+    $consultas += $titulo
+
+    foreach ($fuente in @("youtube", "soundcloud")) {
+        foreach ($q in $consultas) {
+            $cands = @(Buscar-Candidatos $fuente $q)
+            if ($cands.Count -eq 0) { continue }
+            $r = Puntuar-Candidatos $cands $titulo $artista $dur
+            if ($r -and $r.Fiable) { return $r.Candidato }
+        }
+    }
+
+    # reintento con el titulo "oficial" que da Deezer
+    try {
+        $q = ("$artista $titulo").Trim()
+        $busq = Invoke-RestMethod -Uri ("https://api.deezer.com/search?q=" + [uri]::EscapeDataString($q) + "&limit=5") -Headers @{ "User-Agent" = "Mozilla/5.0" } -TimeoutSec 20
+        if ($busq.data.Count -gt 0) {
+            $d0 = $busq.data[0]
+            $canT = [string]$d0.title; $canA = [string]$d0.artist.name; $canD = [int]$d0.duration
+            if ((Normalizar $canT) -ne (Normalizar $titulo) -or (Normalizar $canA) -ne (Normalizar $artista)) {
+                foreach ($fuente in @("youtube", "soundcloud")) {
+                    $cands = @(Buscar-Candidatos $fuente (("$canA $canT").Trim()))
+                    if ($cands.Count -eq 0) { continue }
+                    $rr = Puntuar-Candidatos $cands $canT $canA $canD
+                    if ($rr -and $rr.Fiable) { return $rr.Candidato }
+                }
+            }
+        }
+    }
+    catch { }
+
+    # ultimo recurso: la mejor coincidencia aunque no sea perfecta
+    foreach ($fuente in @("youtube", "soundcloud")) {
+        $cands = @(Buscar-Candidatos $fuente $consultas[0] 10)
+        if ($cands.Count -eq 0) { continue }
+        $r = Puntuar-Candidatos $cands $titulo $artista $dur
+        if ($r) { return $r.Candidato }
+    }
+    return $null
+}
+
+function Descargar-Lista($lista, [string]$nombre, [string]$destino, [string]$calidad, [System.Windows.Forms.RichTextBox]$log) {
+    $limpio = (($nombre -replace '[\\/:*?"<>|]', "_").Trim(" ."))
+    if (-not $limpio) { $limpio = "Lista" }
+    $carpeta = Join-Path $destino $limpio
+    New-Item -ItemType Directory -Force -Path $carpeta | Out-Null
+    Escribir "$nombre  ($($lista.Count) pistas)" $log
+    Escribir "Destino: $carpeta" $log
+    Escribir "" $log
+
+    $i = 0; $ok = 0; $fallos = 0
+    foreach ($t in $lista) {
+        $i++
+        $titulo = if ($t.Titulo) { $t.Titulo } else { "pista $i" }
+        $artista = [string]$t.Artista
+        $etiqueta = if ($artista) { "$artista - $titulo" } else { $titulo }
+        Escribir "[$i/$($lista.Count)] $etiqueta" $log
+
+        $base = (($artista + " - " + $titulo) -replace '[\\/:*?"<>|]', "_").Trim(" -.")
+        if (-not $base) { $base = "pista $i" }
+        $archivo = Join-Path $carpeta ($base + ".mp3")
+        if (Test-Path $archivo) { Escribir "   ya existe, se omite" $log; continue }
+
+        $c = Buscar-Audio $titulo $artista ([int]$t.Dur) $log
+        if (-not $c) { Escribir "   sin resultados en ninguna fuente" $log; $fallos++; continue }
+        Escribir "   $($c.Fuente): $($c.Titulo)" $log
+
+        $tmp = Join-Path $carpeta ("tmp_" + $c.Id + ".%(ext)s")
+        $rc = Ejecutar-YtDlp @("-x", "--audio-format", "mp3", "--audio-quality", $calidad,
+            "--no-overwrites", "-o", $tmp, $c.Url) $log
+        $generado = Join-Path $carpeta ("tmp_" + $c.Id + ".mp3")
+        if (-not (Test-Path $generado)) { Escribir "   error al descargar" $log; $fallos++; continue }
+
+        Move-Item -Force $generado $archivo
+        try {
+            $detalle = Poner-Caratula $archivo $log
+            if ($detalle) { Escribir "   ok · caratula: $detalle" $log } else { Escribir "   ok · sin caratula" $log }
+        }
+        catch { Escribir "   ok · caratula fallida" $log }
+        $ok++
+    }
+    return @{ Ok = $ok; Fallos = $fallos; Carpeta = $carpeta }
+}
+
 function Elegir-Candidato($candidatos, [int]$dur, [string]$titulo, [string]$artista) {
     $mejor = $null; $mejorP = -100.0
     foreach ($c in $candidatos) {
@@ -236,9 +455,55 @@ function Poner-Caratula([string]$ruta, [System.Windows.Forms.RichTextBox]$log) {
     return ("$($mejor.album.title) · Deezer")
 }
 
+function Preparar-Motor([System.Windows.Forms.RichTextBox]$log) {
+    Asegurar-YtDlp $log
+    if (-not (Tiene-FFmpeg)) {
+        throw "Falta ffmpeg. Instálalo con:  winget install Gyan.FFmpeg"
+    }
+}
+
+function Pedir-Texto {
+    $f = New-Object System.Windows.Forms.Form
+    $f.Text = "GorilaPlay - pegar lista"
+    $f.Size = New-Object System.Drawing.Size(660, 440)
+    $f.StartPosition = "CenterScreen"
+    $f.BackColor = [System.Drawing.Color]::FromArgb(24, 27, 33)
+    $f.ForeColor = [System.Drawing.Color]::White
+
+    $aviso = New-Object System.Windows.Forms.Label
+    $aviso.Text = "Una canción por línea, con el formato  Artista - Título:"
+    $aviso.SetBounds(16, 12, 620, 22)
+    $f.Controls.Add($aviso)
+
+    $txt = New-Object System.Windows.Forms.TextBox
+    $txt.Multiline = $true
+    $txt.ScrollBars = "Vertical"
+    $txt.AcceptsReturn = $true
+    $txt.SetBounds(16, 38, 610, 300)
+    $txt.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $f.Controls.Add($txt)
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = "Usar esta lista"
+    $ok.SetBounds(380, 350, 150, 34)
+    $ok.DialogResult = "OK"
+    $f.Controls.Add($ok)
+
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = "Cancelar"
+    $cancel.SetBounds(540, 350, 90, 34)
+    $cancel.DialogResult = "Cancel"
+    $f.Controls.Add($cancel)
+
+    $f.AcceptButton = $ok
+    $f.CancelButton = $cancel
+    if ($f.ShowDialog() -ne "OK") { return $null }
+    return $txt.Text
+}
+
 # ---------- interfaz ----------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "GorilaPlay 1.0.0"
+$form.Text = "GorilaPlay 1.1.0"
 $form.Size = New-Object System.Drawing.Size(760, 560)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(24, 27, 33)
@@ -249,7 +514,7 @@ if (Test-Path (Join-Path $Root "assets\icono.ico")) {
 }
 
 $lblUrl = New-Object System.Windows.Forms.Label
-$lblUrl.Text = "URL del vídeo o de la playlist (YouTube o Spotify):"
+$lblUrl.Text = "URL de la lista o vídeo (YouTube, Spotify, Deezer, SoundCloud, Mixcloud...):"
 $lblUrl.SetBounds(20, 18, 700, 22)
 $form.Controls.Add($lblUrl)
 
@@ -284,12 +549,21 @@ $form.Controls.Add($txtDestino)
 
 $btnGo = New-Object System.Windows.Forms.Button
 $btnGo.Text = "DESCARGAR"
-$btnGo.SetBounds(20, 156, 520, 44)
+$btnGo.SetBounds(210, 156, 330, 44)
 $btnGo.BackColor = [System.Drawing.Color]::FromArgb(201, 43, 38)
 $btnGo.ForeColor = [System.Drawing.Color]::White
 $btnGo.FlatStyle = "Flat"
 $btnGo.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($btnGo)
+
+$btnTexto = New-Object System.Windows.Forms.Button
+$btnTexto.Text = "LISTA .TXT"
+$btnTexto.SetBounds(20, 156, 180, 44)
+$btnTexto.BackColor = [System.Drawing.Color]::FromArgb(38, 44, 54)
+$btnTexto.ForeColor = [System.Drawing.Color]::White
+$btnTexto.FlatStyle = "Flat"
+$btnTexto.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($btnTexto)
 
 $btnCaratulas = New-Object System.Windows.Forms.Button
 $btnCaratulas.Text = "CARÁTULAS"
@@ -322,47 +596,22 @@ $btnGo.Add_Click({
         if (-not $url.StartsWith("http")) { throw "Pega una dirección válida." }
         if (-not (Test-Path $destino)) { New-Item -ItemType Directory -Force -Path $destino | Out-Null }
 
-        Asegurar-YtDlp $log
-        if (-not (Tiene-FFmpeg)) {
-            Escribir "AVISO: no encuentro ffmpeg. Instálalo con:  winget install Gyan.FFmpeg" $log
-            throw "Falta ffmpeg."
+        Preparar-Motor $log
+
+        if ($url -match 'music\.amazon\.|(nonoki|zozoki)\.com') {
+            throw ("Esa plataforma no permite leer listas sin cuenta.`n`n" +
+                "Copia las canciones en un .txt (una por línea, 'Artista - Título')`n" +
+                "y usa el botón LISTA .TXT.")
         }
 
-        switch ($cmbFmt.SelectedIndex) {
-            0 { $argsFmt = @("-x", "--audio-format", "mp3", "--audio-quality", "320K") }
-            1 { $argsFmt = @("-x", "--audio-format", "mp3", "--audio-quality", "192K") }
-            2 { $argsFmt = @("-f", "bestaudio[ext=m4a]/bestaudio") }
-            3 { $argsFmt = @("-f", "bv*[height<=1080]+ba/b[height<=1080]", "--merge-output-format", "mp4") }
-        }
-
-        if ($url -match 'open\.spotify\.com') {
-            $sp = Pistas-Spotify $url $log
-            Escribir "Spotify: $($sp.Nombre)  ($($sp.Pistas.Count) pistas)" $log
-            $carpeta = Join-Path $destino ($sp.Nombre -replace '[\\/:*?"<>|]', "_")
-            New-Item -ItemType Directory -Force -Path $carpeta | Out-Null
-            $i = 0
-            foreach ($t in $sp.Pistas) {
-                $i++
-                $titulo = if ($t.Titulo) { $t.Titulo } else { "pista $i" }
-                $artista = if ($t.Artista) { $t.Artista } else { "" }
-                $nombre = ($artista + " - " + $titulo) -replace '[\\/:*?"<>|]', "_"
-                $final = Join-Path $carpeta ($nombre.Trim(" -") + ".mp3")
-                Escribir "[$i/$($sp.Pistas.Count)] $artista - $titulo" $log
-                if (Test-Path $final) { Escribir "   ya existe, se omite" $log; continue }
-                $consulta = (($titulo -replace '\s*\([^()]*\)', '') + " " + $artista).Trim()
-                $json = & $YtDlp --flat-playlist -J "ytsearch10:$consulta" --no-warnings 2>$null
-                try { $res = $json | ConvertFrom-Json } catch { Escribir "   sin resultados" $log; continue }
-                $cand = Elegir-Candidato $res.entries $t.Dur $titulo $artista
-                if (-not $cand) { Escribir "   sin resultados" $log; continue }
-                $calidad = if ($cmbFmt.SelectedIndex -eq 1) { "192K" } else { "320K" }
-                $tmp = Join-Path $carpeta ("tmp_" + $cand.id + ".%(ext)s")
-                $rc = Ejecutar-YtDlp @("-x", "--audio-format", "mp3", "--audio-quality", $calidad,
-                    "--no-overwrites", "-o", $tmp, "https://www.youtube.com/watch?v=" + $cand.id) $log
-                $generado = Join-Path $carpeta ("tmp_" + $cand.id + ".mp3")
-                if (Test-Path $generado) { Move-Item -Force $generado $final }
+        $esYoutube = ($url -match 'youtube\.com|youtu\.be') -and ($url -notmatch 'music\.youtube\.com')
+        if ($esYoutube) {
+            switch ($cmbFmt.SelectedIndex) {
+                0 { $argsFmt = @("-x", "--audio-format", "mp3", "--audio-quality", "320K") }
+                1 { $argsFmt = @("-x", "--audio-format", "mp3", "--audio-quality", "192K") }
+                2 { $argsFmt = @("-f", "bestaudio[ext=m4a]/bestaudio") }
+                3 { $argsFmt = @("-f", "bv*[height<=1080]+ba/b[height<=1080]", "--merge-output-format", "mp4") }
             }
-        }
-        else {
             $plantilla = Join-Path $destino "%(playlist_title,playlist_id|Sueltas)s\%(artist,creator,uploader,channel)s - %(title)s.%(ext)s"
             $argumentos = $argsFmt + @("--embed-metadata", "--embed-thumbnail", "--no-overwrites",
                 "--download-archive", $Archivo, "--ignore-errors", "--newline", "--retries", "5",
@@ -371,6 +620,17 @@ $btnGo.Add_Click({
             $rc = Ejecutar-YtDlp $argumentos $log
             if ($rc -ne 0) { Escribir "Terminó con errores (código $rc)." $log }
         }
+        else {
+            if ($url -match 'open\.spotify\.com') { $d = Pistas-Spotify $url $log }
+            elseif ($url -match 'deezer\.com') { $d = Pistas-Deezer $url $log }
+            else { $d = Pistas-YtDlp $url $log }
+
+            if ($d.Pistas.Count -eq 0) { throw "No he encontrado pistas en esa lista." }
+            $calidad = if ($cmbFmt.SelectedIndex -eq 1) { "192K" } else { "320K" }
+            $r = Descargar-Lista $d.Pistas $d.Nombre $destino $calidad $log
+            if ($r.Fallos -gt 0) { Escribir "$($r.Fallos) pistas no se pudieron descargar." $log }
+        }
+
         Escribir "" $log
         Escribir "Terminado. Archivos en: $destino" $log
         [System.Windows.Forms.MessageBox]::Show("Descarga terminada.`n`n$destino", "GorilaPlay") | Out-Null
@@ -380,6 +640,47 @@ $btnGo.Add_Click({
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "GorilaPlay", "OK", "Error") | Out-Null
     }
     finally { $btnGo.Enabled = $true }
+})
+
+$btnTexto.Add_Click({
+    $btnTexto.Enabled = $false
+    try {
+        $r = [System.Windows.Forms.MessageBox]::Show(
+            "¿Quieres cargar un archivo .txt o pegar las canciones?`n`nSí = elegir archivo`nNo = pegar el texto",
+            "GorilaPlay - lista de texto", "YesNoCancel", "Question")
+        if ($r -eq "Cancel") { return }
+
+        $nombre = "Lista pegada"
+        if ($r -eq "Yes") {
+            $dlg = New-Object System.Windows.Forms.OpenFileDialog
+            $dlg.Filter = "Listas de texto (*.txt)|*.txt|Todos los archivos (*.*)|*.*"
+            if ($dlg.ShowDialog() -ne "OK") { return }
+            $lineas = Get-Content -Path $dlg.FileName -Encoding UTF8
+            $nombre = [IO.Path]::GetFileNameWithoutExtension($dlg.FileName)
+        }
+        else {
+            $texto = Pedir-Texto
+            if (-not $texto) { return }
+            $lineas = $texto -split "`r?`n"
+        }
+
+        $d = Pistas-Texto $lineas $nombre
+        if ($d.Pistas.Count -eq 0) { throw "No he encontrado canciones en esa lista." }
+
+        $destino = $txtDestino.Text.Trim()
+        if (-not (Test-Path $destino)) { New-Item -ItemType Directory -Force -Path $destino | Out-Null }
+        Preparar-Motor $log
+        $calidad = if ($cmbFmt.SelectedIndex -eq 1) { "192K" } else { "320K" }
+        $res = Descargar-Lista $d.Pistas $d.Nombre $destino $calidad $log
+        Escribir "" $log
+        Escribir "Terminado. Archivos en: $($res.Carpeta)" $log
+        [System.Windows.Forms.MessageBox]::Show("Descarga terminada.`n`n$($res.Carpeta)", "GorilaPlay") | Out-Null
+    }
+    catch {
+        Escribir ("ERROR: " + $_.Exception.Message) $log
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "GorilaPlay", "OK", "Error") | Out-Null
+    }
+    finally { $btnTexto.Enabled = $true }
 })
 
 $btnCaratulas.Add_Click({

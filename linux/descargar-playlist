@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# GorilaPlay - descargador de playlists (YouTube, Spotify y más)
-# Interfaz KDE: kdialog + konsole. Motor: yt-dlp.
+# GorilaPlay - descargador de música y listas de varias plataformas.
+# Interfaz KDE: kdialog + konsole. Motor: yt-dlp, Deezer y Spotify.
 set -u
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 YTDLP="${YTDLP:-$(command -v yt-dlp || echo "$HOME/.local/bin/yt-dlp")}"
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATOS="$HOME/.local/share/gorilaplay"
-SPOTIFY="$DATOS/spotify_descargar.py"
-[ -f "$SPOTIFY" ] || SPOTIFY="$AQUI/spotify_descargar.py"
-CARATULAS="$DATOS/caratulas.py"
-[ -f "$CARATULAS" ] || CARATULAS="$AQUI/caratulas.py"
+
+buscar_script() {
+    if [ -f "$DATOS/$1" ]; then echo "$DATOS/$1"; else echo "$AQUI/$1"; fi
+}
+SPOTIFY="$(buscar_script spotify_descargar.py)"
+CARATULAS="$(buscar_script caratulas.py)"
+FUENTES="$(buscar_script fuentes.py)"
+BUSQUEDA="$(buscar_script busqueda.py)"
+LISTA="$(buscar_script lista_descargar.py)"
+
 ESTADO="$HOME/.local/state/gorilaplay"
 ARCHIVO="$ESTADO/descargados.txt"
 TITULO="GorilaPlay"
@@ -18,7 +24,8 @@ mkdir -p "$ESTADO"
 
 # 0. Qué hacemos
 ACCION=$(kdialog --title "$TITULO" --menu "¿Qué quieres hacer?" \
-    descargar "Descargar vídeo o playlist (YouTube, Spotify...)" \
+    descargar "Descargar vídeo o lista (YouTube, Spotify, Deezer...)" \
+    texto     "Descargar una lista pegada o de un archivo .txt" \
     caratulas "Poner carátula a las canciones de una carpeta") || exit 0
 
 # ---------------------------------------------------------------- carátulas
@@ -78,41 +85,81 @@ o bien:         pip install --user mutagen"
     exit 0
 fi
 
-# ---------------------------------------------------------------- descarga
 if [ ! -x "$YTDLP" ]; then
     kdialog --title "$TITULO" --error "No encuentro yt-dlp.
 Instálalo con:  pipx install yt-dlp"
     exit 1
 fi
 
-# 1. URL
-URL=$(kdialog --title "$TITULO" \
-    --inputbox "Pega la dirección del vídeo o de la playlist (YouTube o Spotify):" \
-    "https://www.youtube.com/playlist?list=") || exit 0
-URL="${URL// /}"
-[ -z "$URL" ] && exit 0
-case "$URL" in
-    http*) ;;
-    *) kdialog --title "$TITULO" --error "Eso no parece una dirección web."; exit 1 ;;
-esac
+# ---------------------------------------------------------------- lista de texto
+if [ "$ACCION" = texto ]; then
+    if [ ! -f "$LISTA" ] || [ ! -f "$FUENTES" ] || [ ! -f "$BUSQUEDA" ]; then
+        kdialog --title "$TITULO" --error "Faltan los módulos del motor de listas.
+Vuelve a ejecutar el instalador."
+        exit 1
+    fi
+    ENTRADA=$(kdialog --title "$TITULO" --menu \
+        "¿De dónde sacamos las canciones?" \
+        pegar   "Pegar las canciones (una por línea: Artista - Título)" \
+        archivo "Elegir un archivo .txt") || exit 0
+    case "$ENTRADA" in
+        pegar)
+            TEXTO=$(kdialog --title "$TITULO" --textinputbox \
+                "Pega una canción por línea, con el formato  Artista - Título:" \
+                "") || exit 0
+            [ -z "${TEXTO//[[:space:]]/}" ] && exit 0
+            ORIGEN_TXT="$TEXTO"
+            ;;
+        archivo)
+            ARCHIVO_TXT=$(kdialog --title "$TITULO" \
+                --getopenfilename "$HOME" "*.txt *.TXT") || exit 0
+            [ -z "$ARCHIVO_TXT" ] && exit 0
+            ORIGEN_TXT="$ARCHIVO_TXT"
+            ;;
+        *) exit 0 ;;
+    esac
+    NOMBRE_LISTA=$(kdialog --title "$TITULO" --inputbox \
+        "Nombre de la carpeta donde guardar las canciones:" \
+        "Mi lista") || exit 0
+    [ -z "$NOMBRE_LISTA" ] && NOMBRE_LISTA="Mi lista"
+    TIPO=lista
+else
+    # 1. URL
+    URL=$(kdialog --title "$TITULO" \
+        --inputbox "Pega la dirección del vídeo o de la lista.
 
-case "$URL" in
-    *open.spotify.com*) TIPO=spotify ;;
-    *)                  TIPO=yt ;;
-esac
+Sirven YouTube, YouTube Music, Spotify, Deezer, SoundCloud,
+Mixcloud y Bandcamp. Para Amazon Music y Nonoki usa la opción
+'Descargar una lista pegada o de un archivo .txt'." \
+        "https://www.youtube.com/playlist?list=") || exit 0
+    URL="${URL// /}"
+    [ -z "$URL" ] && exit 0
+    case "$URL" in
+        http*) ;;
+        *) kdialog --title "$TITULO" --error "Eso no parece una dirección web."; exit 1 ;;
+    esac
+
+    # YouTube de vídeo sigue por el camino clásico; el resto usa el motor
+    # de listas, que tiene alternativas si una canción falta.
+    case "$URL" in
+        *music.youtube.com*)        TIPO=lista ;;
+        *youtube.com*|*youtu.be*)   TIPO=yt ;;
+        *)                          TIPO=lista ;;
+    esac
+fi
 
 # 2. Formato
-if [ "$TIPO" = spotify ]; then
-    OPCION=$(kdialog --title "$TITULO" --radiolist \
-        "Spotify: solo audio (la música se baja de YouTube)" \
-        mp3-320 "Audio MP3 320 kbps" on \
-        mp3-192 "Audio MP3 192 kbps" off) || exit 0
-else
+if [ "$TIPO" = yt ]; then
     OPCION=$(kdialog --title "$TITULO" --radiolist "¿Qué quieres descargar?" \
         mp3-320 "Audio MP3 320 kbps" on \
         mp3-192 "Audio MP3 192 kbps" off \
         m4a     "Audio original (m4a, sin recodificar)" off \
         video   "Vídeo (mejor calidad hasta 1080p)" off) || exit 0
+else
+    OPCION=$(kdialog --title "$TITULO" --radiolist \
+        "Solo audio (se busca la mejor fuente para cada canción)" \
+        mp3-320 "Audio MP3 320 kbps" on \
+        mp3-192 "Audio MP3 192 kbps" off) || exit 0
 fi
 [ -z "$OPCION" ] && exit 0
 
@@ -125,7 +172,40 @@ DESTINO=$(kdialog --title "$TITULO" --getexistingdirectory "$INICIO") || exit 0
 LOG="$ESTADO/$(date +%Y%m%d-%H%M%S).log"
 RUNNER="$(mktemp "$ESTADO/runner-XXXXXX.sh")"
 
-if [ "$TIPO" = spotify ]; then
+if [ "$TIPO" = lista ]; then
+    BITRATE="${OPCION#mp3-}"
+    if [ "$ACCION" = texto ]; then
+        ENTRADA_LISTA="$ORIGEN_TXT"
+        CABECERA="Lista propia: $NOMBRE_LISTA"
+        # si es texto pegado, se guarda en un .txt temporal para no pelearse
+        # con los saltos de línea al pasarlo como argumento
+        case "$ENTRADA_LISTA" in
+            /*) ;;
+            *)
+                TMP_TXT="$ESTADO/lista-$(date +%Y%m%d-%H%M%S).txt"
+                printf '%s\n' "$ENTRADA_LISTA" > "$TMP_TXT"
+                ENTRADA_LISTA="$TMP_TXT"
+                ;;
+        esac
+        # el nombre de la carpeta lo decide la persona, no el archivo
+        ARGS_LISTA=(--nombre "$NOMBRE_LISTA")
+    else
+        ENTRADA_LISTA="$URL"
+        CABECERA="Origen: $URL"
+        ARGS_LISTA=()
+    fi
+    {
+        echo '#!/usr/bin/env bash'
+        printf 'echo "GorilaPlay %s - lista"\necho\n' "$VERSION"
+        printf 'echo %q\necho\n' "$CABECERA"
+        printf 'python3 %q %q %q %q' "$LISTA" "$ENTRADA_LISTA" "$DESTINO" "$BITRATE"
+        if [ "${#ARGS_LISTA[@]}" -gt 0 ]; then
+            printf ' %q' "${ARGS_LISTA[@]}"
+        fi
+        printf ' 2>&1 | tee %q\n' "$LOG"
+        echo 'rc=${PIPESTATUS[0]}'
+    } > "$RUNNER"
+elif [ "$TIPO" = spotify ]; then
     BITRATE="${OPCION#mp3-}"
     {
         echo '#!/usr/bin/env bash'

@@ -17,6 +17,16 @@ install -m 755 "$ORIGEN/descargar-playlist" "$BIN/descargar-playlist"
 install -m 755 "$ORIGEN/spotify_descargar.py" "$DATOS/spotify_descargar.py"
 install -m 755 "$ORIGEN/caratulas.py" "$DATOS/caratulas.py"
 install -m 755 "$ORIGEN/caratulas.py" "$BIN/gorilaplay-caratulas"
+install -m 755 "$ORIGEN/fuentes.py" "$DATOS/fuentes.py"
+install -m 755 "$ORIGEN/busqueda.py" "$DATOS/busqueda.py"
+install -m 755 "$ORIGEN/lista_descargar.py" "$DATOS/lista_descargar.py"
+
+cat > "$BIN/gorilaplay-lista" <<EOF
+#!/usr/bin/env bash
+# GorilaPlay - descarga una lista desde la terminal.
+exec python3 "$DATOS/lista_descargar.py" "\$@"
+EOF
+chmod +x "$BIN/gorilaplay-lista"
 
 if [ -f "$RAIZ/assets/icono-512.png" ]; then
     install -m 644 "$RAIZ/assets/icono-512.png" "$ICONOS/512x512/apps/gorilaplay.png"
@@ -28,12 +38,12 @@ cat > "$APPS/gorilaplay.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=GorilaPlay
-Comment=Descarga playlists de YouTube y Spotify
+Comment=Descarga listas de YouTube, Spotify, Deezer y más
 Exec=$BIN/descargar-playlist
 Icon=gorilaplay
 Terminal=false
 Categories=AudioVideo;Audio;Network;
-Keywords=yt-dlp;youtube;spotify;playlist;mp3;musica;
+Keywords=yt-dlp;youtube;spotify;deezer;soundcloud;mixcloud;playlist;mp3;musica;
 StartupNotify=true
 EOF
 

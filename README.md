@@ -5,7 +5,7 @@
 <h1 align="center">GorilaPlay</h1>
 
 <p align="center">
-  Descargador de playlists de YouTube y Spotify con interfaz gráfica.<br>
+  Descargador de listas de música de varias plataformas, con interfaz gráfica.<br>
   Pega la URL, elige formato y carpeta, y listo.
 </p>
 
@@ -14,30 +14,41 @@
 ## Qué es
 
 GorilaPlay es un lanzador sencillo para [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-pensado para no tener que escribir comandos. Acepta:
+pensado para no tener que escribir comandos. Acepta listas de:
 
-- **YouTube**: playlists, álbumes, vídeos sueltos y canales.
+- **YouTube** y **YouTube Music**: playlists, álbumes, vídeos sueltos y canales.
 - **Spotify**: playlists, álbumes y canciones (los metadatos se leen de Spotify
-  y el audio se descarga de YouTube, porque Spotify no permite descargar su
-  audio).
-- Cualquier otro sitio que soporte yt-dlp (SoundCloud, Bandcamp, Vimeo...).
+  y el audio se busca fuera, porque Spotify no permite descargar su audio).
+- **Deezer**: playlists, álbumes y canciones, con su API pública.
+- **SoundCloud** y **Mixcloud**.
+- **Bandcamp** y cualquier otro sitio que soporte yt-dlp.
+- **Una lista de texto** o un archivo `.txt` con una canción por línea. Es la
+  vía para Amazon Music, Nonoki y cualquier plataforma que no publique sus listas.
 
-Formatos: MP3 320 kbps, MP3 192 kbps, audio original m4a o vídeo hasta 1080p.
+Cada canción se busca en YouTube y, si no hay una coincidencia clara, se prueba
+en SoundCloud. Si tampoco, se pregunta a Deezer por el título oficial y se
+reintenta. Así una canción que falta o está mal subida en un sitio puede
+aparecer en el otro.
+
+Formatos: MP3 320 kbps, MP3 192 kbps, audio original m4a o vídeo hasta 1080p
+(estos dos últimos, solo para enlaces de YouTube).
 
 ## Características
 
 - Diálogos nativos: sin terminal ni comandos para el uso diario.
 - Crea una subcarpeta por playlist con el nombre de la lista.
 - Nombra los archivos como `Artista - Título.mp3` e incrusta carátula y etiquetas.
+- **Búsqueda con alternativas**: YouTube → SoundCloud → reintento con el título
+  canónico de Deezer. El log dice de qué fuente salió cada canción.
 - **Carátula propia en cada canción**: si la descarga no trae una buena, la busca
-  en Deezer/iTunes y, si no la encuentra, usa la de la lista de Spotify o la
-  miniatura de YouTube.
+  en Deezer/iTunes y, si no la encuentra, usa la de la lista o la miniatura de
+  YouTube.
 - **Pone carátula a una carpeta ya descargada**: útil para discos bajados antes
   de tener esta función o para música que ya tenías.
 - Registro de descargas: lo que ya has bajado no se vuelve a descargar.
 - Log de cada ejecución para poder revisar errores.
-- Al buscar en YouTube descarta lyric, cover, karaoke, en vivo, etc., y prefiere
-  canales oficiales (`... - Topic`, VEVO) y la duración que marca Spotify.
+- Al buscar descarta lyric, cover, karaoke, en vivo, etc., y prefiere canales
+  oficiales (`... - Topic`, VEVO) y la duración que marca la plataforma de origen.
 
 ## Instalación en Linux (probado en KDE / Nobara)
 
@@ -96,14 +107,19 @@ El botón **CARÁTULAS** hace lo mismo que en Linux: elige una carpeta y pone
 portada a cada mp3/m4a que no la tenga (necesita `ffmpeg` y `ffprobe`, los dos
 vienen en el paquete de Gyan.FFmpeg).
 
+El botón **LISTA .TXT** permite cargar un archivo de texto o pegar las
+canciones directamente, con el mismo formato `Artista - Título` por línea.
+También acepta enlaces de Deezer y de las demás plataformas que lee yt-dlp,
+con búsqueda alternativa en YouTube y SoundCloud.
+
 > La versión de Windows está portada pero menos probada que la de Linux. Si algo
 > falla, abre un issue con el mensaje de error.
 
 ## Uso
 
 1. Abre **GorilaPlay**.
-2. Elige **Descargar vídeo o playlist**.
-3. Pega la URL de la playlist.
+2. Elige **Descargar vídeo o lista**.
+3. Pega la URL de la lista (o de un vídeo de YouTube).
 4. Elige el formato.
 5. Elige la carpeta de destino (por defecto `~/Música`).
 6. Pulsa **Descargar** y espera.
@@ -118,10 +134,31 @@ Resultado:
     └── ...
 ```
 
+Si una canción no aparece, prueba la opción **Descargar una lista pegada o de
+un archivo .txt**: eliges un `.txt` o pegas las canciones (una por línea, con
+el formato `Artista - Título`) y GorilaPlay hace la misma búsqueda con
+alternativas.
+
+### Plataformas
+
+| Plataforma | Cómo se lee |
+|---|---|
+| YouTube / YouTube Music | yt-dlp |
+| Spotify | página pública de la lista (máximo 100 pistas) |
+| Deezer | API pública |
+| SoundCloud / Mixcloud | yt-dlp |
+| Bandcamp y otros | yt-dlp |
+| Amazon Music / Nonoki | lista de texto o `.txt` |
+
+Amazon Music y Nonoki (ahora Zozoki) no permiten leer sus listas sin cuenta.
+Copia las canciones en un `.txt`, una por línea, y usa la opción de lista de
+texto. El audio se busca igualmente en YouTube/SoundCloud.
+
 ### Spotify
 
 Pega la URL de la playlist, álbum o canción de Spotify. GorilaPlay lee la lista
-de pistas públicas y busca cada una en YouTube, comparando duración y título.
+de pistas públicas y busca cada una primero en YouTube y luego en SoundCloud,
+comparando duración y título.
 
 Limitación: la vista pública de Spotify muestra como máximo **100 pistas**.
 Si tu playlist es más larga, se descargarán las 100 primeras (te avisa en el log).
@@ -156,6 +193,20 @@ cuando faltan (`--sin-etiquetas` para no tocarlos).
 Soporta MP3, M4A, FLAC, OGG y OPUS. No recomprime el audio: solo le añade la
 imagen y las etiquetas. Si una canción se queda sin carátula, el programa lo
 dice al final con la lista de las que han fallado.
+
+### Desde la terminal
+
+El instalador también deja el motor de listas accesible como
+`gorilaplay-lista`:
+
+```bash
+gorilaplay-lista "https://www.deezer.com/es/playlist/123456789" ~/Música
+gorilaplay-lista ~/listas/mi-lista.txt ~/Música --limit 10
+gorilaplay-lista ~/listas/mi-lista.txt ~/Música --solo-probar
+```
+
+Acepta `--desde N` para reanudar, `--fuente youtube,soundcloud` para cambiar el
+orden de búsqueda, `--sin-caratula` y `--nombre "Mi carpeta"`.
 
 ### Datos y registros
 
@@ -193,7 +244,7 @@ renombrar el archivo como `Artista - Título.mp3`, que es lo que usa para buscar
 ```
 GorilaPlay/
 ├── assets/          icono (svg, png 1024/512/256, ico)
-├── linux/           lanzador bash + Spotify + carátulas + instalador
+├── linux/           lanzador bash + motor de listas + carátulas + instalador
 ├── windows/         port en PowerShell + lanzador .cmd
 ├── LICENSE
 └── README.md
