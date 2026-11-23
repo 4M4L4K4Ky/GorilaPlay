@@ -10,24 +10,27 @@ Plataformas que se leen directamente, sin cuenta ni clave:
   - YouTube Music  (yt-dlp)
   - SoundCloud     (yt-dlp, listas y canciones sueltas)
   - Mixcloud       (yt-dlp, cada programa es una pista)
+  - Amazon Music   (API web publica: listas, albumes, artistas y canciones)
   - Bandcamp y demas sitios que soporte yt-dlp
 
-Amazon Music y Nonoki no publican sus listas: para esas dos hay que pegar el
-texto de las canciones (una por linea, "Artista - Titulo") o guardarlo en un
-.txt.
+Nonoki (Zozoki) no publica sus listas: para esa hay que pegar el texto de las
+canciones (una por linea, "Artista - Titulo") o guardarlo en un .txt.
 
 Cada pista se devuelve como diccionario con las claves:
     titulo, artista, dur (segundos), album, portada, url (opcional)
 """
+import html
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 YTDLP = os.path.expanduser("~/.local/bin/yt-dlp")
@@ -49,15 +52,45 @@ PLATAFORMAS = {
 
 # Plataformas sin API publica: se explica que hacer en vez de fallar en seco.
 SIN_LECTURA = {
-    "amazon": ("Amazon Music no permite leer listas sin iniciar sesion.\n\n"
-               "Abre la lista y copia las canciones en un archivo .txt, una por\n"
-               "linea con el formato:  Artista - Titulo\n"
-               "Luego usa la opcion 'Descargar desde una lista de texto'."),
     "nonoki": ("Nonoki (Zozoki) no publica sus listas ni tiene API abierta.\n\n"
                "Copia las canciones en un archivo .txt, una por linea con el\n"
                "formato:  Artista - Titulo\n"
                "Luego usa la opcion 'Descargar desde una lista de texto'."),
 }
+
+# Amazon Music: endpoints web que usa su propio reproductor. No hace falta
+# cuenta para leer el catalogo, solo el token CSRF de config.json.
+AMAZON_SKILL = {
+    "na": "https://na.web.skill.music.a2z.com",
+    "eu": "https://eu.web.skill.music.a2z.com",
+    "fe": "https://fe.web.skill.music.a2z.com",
+}
+AMAZON_REGIONES = {
+    "music.amazon.com": ("na", "en_US", "USD"),
+    "music.amazon.ca": ("na", "en_CA", "CAD"),
+    "music.amazon.com.mx": ("na", "es_MX", "MXN"),
+    "music.amazon.com.br": ("na", "pt_BR", "BRL"),
+    "music.amazon.co.uk": ("eu", "en_GB", "GBP"),
+    "music.amazon.de": ("eu", "de_DE", "EUR"),
+    "music.amazon.fr": ("eu", "fr_FR", "EUR"),
+    "music.amazon.it": ("eu", "it_IT", "EUR"),
+    "music.amazon.es": ("eu", "es_ES", "EUR"),
+    "music.amazon.in": ("eu", "en_IN", "INR"),
+    "music.amazon.co.jp": ("fe", "ja_JP", "JPY"),
+    "music.amazon.com.au": ("fe", "en_AU", "AUD"),
+}
+AMAZON_RUTAS = {
+    "artists": "/api/showCatalogArtist",
+    "albums": "/api/showCatalogAlbum",
+    "playlists": "/api/showCatalogPlaylist",
+    "user-playlists": "/api/showLibraryPlaylist",
+}
+# Cabeceras (traducidas) del carrusel de canciones mas escuchadas del artista.
+AMAZON_TOP = ("canciones populares", "top songs", "popular songs", "las mas",
+              "mejores canciones", "músicas populares", "mais tocadas",
+              "canzoni popolari", "chansons populaires", "populare",
+              "populäre", "beliebte", "populaire", "populära", "populære")
+_AMAZON_CONFIG = {}
 
 # Sufijos de los titulos de YouTube que no forman parte del nombre.
 BASURA = re.compile(
@@ -107,9 +140,9 @@ def _json(url, timeout=25):
         raise ErrorLista(f"No pude leer el enlace: {e}")
 
 
-def _html(url, timeout=30):
+def _html(url, timeout=30, ua=None):
     req = urllib.request.Request(
-        url, headers={"User-Agent": UA,
+        url, headers={"User-Agent": ua or UA,
                       "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -320,6 +353,301 @@ def pistas_deezer(url):
             "pistas": pistas}
 
 
+# ---------------------------------------------------------------- amazon
+def _amazon_parametros(host):
+    if host in AMAZON_REGIONES:
+        return AMAZON_REGIONES[host]
+    if re.search(r"\.co\.jp$|\.com\.au$", host):
+        return "fe", "en_US", "USD"
+    if re.search(r"(^music\.amazon\.com$|\.com\.mx$|\.com\.br$|\.ca$)", host):
+        return "na", "en_US", "USD"
+    return "eu", "en_US", "EUR"
+
+
+def _amazon_config(host):
+    """Pide el token CSRF anonimo que usa el reproductor web de Amazon."""
+    if host in _AMAZON_CONFIG:
+        return _AMAZON_CONFIG[host]
+    url = f"https://{host}/config.json?skipToken=false&clientApplication=skyfire"
+    req = urllib.request.Request(
+        url, data=b"",
+        headers={"accept": "*/*", "accept-language": "es-ES,es;q=0.9",
+                 "content-type": "text/plain;charset=UTF-8",
+                 "origin": f"https://{host}", "referer": f"https://{host}/",
+                 "user-agent": UA},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r:
+            cfg = json.load(r)
+    except urllib.error.HTTPError as e:
+        raise ErrorLista(f"Amazon Music respondio {e.code} al pedir la sesion.")
+    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+        raise ErrorLista(f"No pude conectar con Amazon Music: {e}")
+    if not isinstance(cfg, dict) or not cfg.get("csrf"):
+        raise ErrorLista("Amazon Music no devolvio una sesion valida.")
+    _AMAZON_CONFIG[host] = cfg
+    return cfg
+
+
+def _amazon_cabeceras(cfg, host, pagina, idioma, moneda):
+    csrf = cfg.get("csrf") or {}
+    return {
+        "x-amzn-authentication": json.dumps({
+            "interface": "ClientAuthenticationInterface.v1_0.ClientTokenElement",
+            "accessToken": cfg.get("accessToken") or ""}),
+        "x-amzn-device-model": "WEBPLAYER",
+        "x-amzn-device-width": "1920",
+        "x-amzn-device-family": "WebPlayer",
+        "x-amzn-device-id": cfg.get("deviceId") or "",
+        "x-amzn-user-agent": UA,
+        "x-amzn-session-id": cfg.get("sessionId") or "",
+        "x-amzn-device-height": "1080",
+        "x-amzn-request-id": uuid.uuid4().hex[:12],
+        "x-amzn-device-language": idioma,
+        "x-amzn-currency-of-preference": moneda,
+        "x-amzn-os-version": "1.0",
+        "x-amzn-application-version": cfg.get("version") or "",
+        "x-amzn-device-time-zone": "Europe/Madrid",
+        "x-amzn-timestamp": str(int(time.time() * 1000)),
+        "x-amzn-csrf": json.dumps({
+            "interface": "CSRFInterface.v1_0.CSRFHeaderElement",
+            "token": csrf.get("token") or "",
+            "timestamp": str(csrf.get("ts") or ""),
+            "rndNonce": str(csrf.get("rnd") or "")}),
+        "x-amzn-music-domain": host,
+        "x-amzn-referer": host,
+        "x-amzn-affiliate-tags": "",
+        "x-amzn-ref-marker": "",
+        "x-amzn-page-url": pagina,
+        "x-amzn-weblab-id-overrides": "",
+        "x-amzn-video-player-token": "",
+        "x-amzn-feature-flags": "hd-supported,uhd-supported",
+        "x-amzn-has-profile-id": "",
+        "x-amzn-age-band": "",
+    }
+
+
+def _amazon_post(host, ruta, ident, segmento):
+    cfg = _amazon_config(host)
+    region, idioma, moneda = _amazon_parametros(host)
+    pagina = f"https://{host}/{segmento}/{ident}"
+    cuerpo = {
+        "id": ident,
+        "userHash": json.dumps({"level": "LIBRARY_MEMBER"}),
+        "headers": json.dumps(
+            _amazon_cabeceras(cfg, host, pagina, idioma, moneda)),
+    }
+    req = urllib.request.Request(
+        AMAZON_SKILL[region] + ruta,
+        data=json.dumps(cuerpo).encode(),
+        headers={
+            "accept": "*/*",
+            "accept-language": "es-ES,es;q=0.9,en;q=0.8",
+            "content-type": "text/plain;charset=UTF-8",
+            "origin": f"https://{host}",
+            "referer": f"https://{host}/",
+            "user-agent": UA,
+            "x-amzn-device-model": "WEBPLAYER",
+            "x-amzn-device-id": cfg.get("deviceId") or "",
+            "x-amzn-session-id": cfg.get("sessionId") or "",
+        },
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=35) as r:
+            datos = json.load(r)
+    except urllib.error.HTTPError as e:
+        raise ErrorLista(
+            f"Amazon Music respondio {e.code}. Puede que el enlace ya no "
+            "exista o que el contenido no este disponible en tu region.")
+    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+        raise ErrorLista(f"No pude leer Amazon Music: {e}")
+    if not isinstance(datos, dict):
+        raise ErrorLista("Amazon Music devolvio una respuesta inesperada.")
+    return datos
+
+
+def _amazon_texto(valor):
+    if isinstance(valor, dict):
+        return html.unescape((valor.get("text") or "").strip())
+    return html.unescape(str(valor or "")).strip()
+
+
+def _amazon_duracion(texto):
+    """'03:08' o '1:02:03' -> segundos."""
+    if not texto:
+        return 0
+    partes = [int(p) for p in re.split(r"[:.]", str(texto))
+              if p.strip().isdigit()]
+    if len(partes) >= 3:
+        return partes[-3] * 3600 + partes[-2] * 60 + partes[-1]
+    if len(partes) == 2:
+        return partes[0] * 60 + partes[1]
+    return 0
+
+
+def _amazon_iso(texto):
+    """Duracion ISO 8601 de la pagina de una cancion (PT3M8S)."""
+    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", texto or "")
+    if not m:
+        return 0
+    h, mi, s = (int(x or 0) for x in m.groups())
+    return h * 3600 + mi * 60 + s
+
+
+def _amazon_ids(item):
+    """Devuelve (album_id, track_id) de un elemento de la API."""
+    clave = (((item.get("iconButton") or {}).get("observer") or {})
+             .get("storageKey") or "")
+    album = track = ""
+    if ":" in clave:
+        album, track = clave.split(":", 1)
+    enlace = (((item.get("primaryLink") or {}).get("deeplink")
+               or (item.get("primaryTextLink") or {}).get("deeplink") or ""))
+    m = re.search(r"trackAsin=([A-Za-z0-9]+)", enlace)
+    if m and not track:
+        track = m.group(1)
+    m = re.search(r"/tracks/([A-Za-z0-9]+)", enlace)
+    if m and not track:
+        track = m.group(1)
+    m = re.search(r"/albums/([A-Za-z0-9]+)", enlace)
+    if m and not album:
+        album = m.group(1)
+    if not track:
+        track = str(item.get("id") or "")
+    return album, track
+
+
+def _amazon_items(items, artista="", album="", portada=""):
+    pistas = []
+    for item in items or []:
+        titulo = _amazon_texto(item.get("primaryText"))
+        titulo = re.sub(r"^\d+\.\s*", "", titulo).strip()
+        if not titulo:
+            continue
+        nombre_artista = (_amazon_texto(item.get("secondaryText1"))
+                          or _amazon_texto(item.get("secondaryText"))
+                          or artista)
+        nombre_album = _amazon_texto(item.get("secondaryText2")) or album
+        album_id, track_id = _amazon_ids(item)
+        pistas.append({
+            "titulo": titulo,
+            "artista": nombre_artista,
+            "dur": _amazon_duracion(_amazon_texto(item.get("secondaryText3"))),
+            "album": nombre_album,
+            "portada": item.get("image") or portada,
+            "url": f"https://music.amazon.com/tracks/{track_id}" if track_id else "",
+            "_album_id": album_id,
+        })
+    return pistas
+
+
+def _amazon_widget_artista(template, nombre):
+    """Localiza el carrusel de canciones populares del artista."""
+    for widget in template.get("widgets") or []:
+        cabecera = (widget.get("header") or "").lower()
+        if any(marca in cabecera for marca in AMAZON_TOP):
+            return widget.get("items") or []
+    # Sin cabecera conocida: el widget con mas pistas del propio artista.
+    objetivo = norm(nombre)
+    mejor, mejor_n = [], 0
+    for widget in template.get("widgets") or []:
+        validos = [i for i in (widget.get("items") or [])
+                   if ":" in (((i.get("iconButton") or {}).get("observer") or {})
+                              .get("storageKey") or "")
+                   and objetivo in norm(_amazon_texto(i.get("secondaryText")))]
+        if len(validos) > mejor_n:
+            mejor, mejor_n = validos, len(validos)
+    return mejor
+
+
+def _pistas_amazon_cancion(url):
+    """Ultimo recurso para enlaces /tracks/: la pagina renderizada para bots."""
+    bot = ("Mozilla/5.0 (compatible; Googlebot/2.1; "
+           "+http://www.google.com/bot.html)")
+    pagina = _html(url, ua=bot)
+    bloques = re.findall(
+        r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+        pagina, re.S)
+    for bloque in bloques:
+        try:
+            datos = json.loads(html.unescape(bloque))
+        except ValueError:
+            continue
+        for x in (datos if isinstance(datos, list) else [datos]):
+            if not isinstance(x, dict) or x.get("@type") != "MusicRecording":
+                continue
+            titulo = html.unescape(x.get("name") or "").strip()
+            if not titulo:
+                continue
+            by = x.get("byArtist") or {}
+            artista = html.unescape(by.get("name") or "") if isinstance(by, dict) else ""
+            dentro = x.get("inAlbum") or {}
+            album = html.unescape(dentro.get("name") or "") if isinstance(dentro, dict) else ""
+            return {
+                "plataforma": "amazon",
+                "nombre": album or titulo,
+                "portada": x.get("image") or "",
+                "pistas": [{
+                    "titulo": titulo, "artista": artista,
+                    "dur": _amazon_iso(x.get("duration") or ""),
+                    "album": album, "portada": x.get("image") or "", "url": url,
+                }],
+            }
+    raise ErrorLista("No pude leer esa cancion de Amazon Music.\n\n"
+                     "Prueba con el enlace del album o de la lista.")
+
+
+def pistas_amazon(url):
+    partes = urllib.parse.urlparse(url)
+    host = partes.netloc.lower()
+    m = re.search(r"/(artists|albums|playlists|user-playlists|tracks)/"
+                  r"([A-Za-z0-9]+)", partes.path)
+    if not m:
+        raise ErrorLista("Enlace de Amazon Music no reconocido.")
+    tipo, ident = m.groups()
+
+    if tipo == "tracks":
+        return _pistas_amazon_cancion(url)
+
+    datos = _amazon_post(host, AMAZON_RUTAS[tipo], ident, tipo)
+    metodos = datos.get("methods") or []
+    template = (metodos[0].get("template") or {}) if metodos else {}
+    plantilla = template.get("templateData") or {}
+    widgets = template.get("widgets") or []
+    if (not template or plantilla.get("deeplink") == "/"
+            or (tipo != "artists" and not widgets)):
+        raise ErrorLista("Amazon Music no encuentra esa lista, album o artista.\n\n"
+                         "Puede ser privada, haber cambiado de direccion o no "
+                         "estar disponible en tu region.")
+
+    if tipo == "artists":
+        nombre = (_amazon_texto(template.get("headerText"))
+                  or urllib.parse.unquote(partes.path.rstrip("/").split("/")[-1])
+                  .replace("-", " "))
+        portada = (template.get("backgroundImage")
+                   or template.get("headerImage") or "")
+        pistas = _amazon_items(_amazon_widget_artista(template, nombre),
+                               artista=nombre, portada=portada)
+        if not pistas:
+            raise ErrorLista("Ese artista no tiene canciones populares visibles.")
+        return {"plataforma": "amazon", "nombre": nombre,
+                "portada": portada, "pistas": pistas}
+
+    nombre = (_amazon_texto(template.get("headerText"))
+              or urllib.parse.unquote(partes.path.rstrip("/").split("/")[-1])
+              .replace("-", " "))
+    portada = template.get("headerImage") or ""
+    artista = _amazon_texto(template.get("headerPrimaryText"))
+    album_defecto = nombre if tipo == "albums" else ""
+    items = (widgets[0].get("items") or []) if widgets else []
+    pistas = _amazon_items(items, artista=artista, album=album_defecto,
+                           portada=portada)
+    if not pistas:
+        raise ErrorLista("Esa lista de Amazon Music esta vacia.")
+    return {"plataforma": "amazon", "nombre": nombre, "portada": portada,
+            "pistas": pistas}
+
+
 # ---------------------------------------------------------------- yt-dlp
 def pistas_ytdlp(url, plataforma="otro", impersonar=False):
     if impersonar:
@@ -406,6 +734,8 @@ def obtener_pistas(entrada):
         return pistas_spotify(entrada)
     if plataforma == "deezer":
         return pistas_deezer(entrada)
+    if plataforma == "amazon":
+        return pistas_amazon(entrada)
     return pistas_ytdlp(entrada, plataforma,
                        impersonar=plataforma in ("mixcloud", "otro"))
 

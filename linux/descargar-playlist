@@ -128,8 +128,8 @@ else
     URL=$(kdialog --title "$TITULO" \
         --inputbox "Pega la dirección del vídeo o de la lista.
 
-Sirven YouTube, YouTube Music, Spotify, Deezer, SoundCloud,
-Mixcloud y Bandcamp. Para Amazon Music y Nonoki usa la opción
+Sirven YouTube, YouTube Music, Spotify, Deezer, Amazon Music,
+SoundCloud, Mixcloud y Bandcamp. Para Nonoki usa la opción
 'Descargar una lista pegada o de un archivo .txt'." \
         "https://www.youtube.com/playlist?list=") || exit 0
     URL="${URL// /}"

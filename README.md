@@ -20,10 +20,12 @@ pensado para no tener que escribir comandos. Acepta listas de:
 - **Spotify**: playlists, álbumes y canciones (los metadatos se leen de Spotify
   y el audio se busca fuera, porque Spotify no permite descargar su audio).
 - **Deezer**: playlists, álbumes y canciones, con su API pública.
+- **Amazon Music**: playlists, álbumes, artistas y canciones del catálogo
+  público (sin cuenta).
 - **SoundCloud** y **Mixcloud**.
 - **Bandcamp** y cualquier otro sitio que soporte yt-dlp.
 - **Una lista de texto** o un archivo `.txt` con una canción por línea. Es la
-  vía para Amazon Music, Nonoki y cualquier plataforma que no publique sus listas.
+  vía para Nonoki y cualquier plataforma que no publique sus listas.
 
 Cada canción se busca en YouTube y, si no hay una coincidencia clara, se prueba
 en SoundCloud. Si tampoco, se pregunta a Deezer por el título oficial y se
@@ -112,6 +114,9 @@ canciones directamente, con el mismo formato `Artista - Título` por línea.
 También acepta enlaces de Deezer y de las demás plataformas que lee yt-dlp,
 con búsqueda alternativa en YouTube y SoundCloud.
 
+> De momento la lectura directa de Amazon Music está solo en la versión de
+> Linux. En Windows, usa el botón **LISTA .TXT** con las canciones copiadas.
+
 > La versión de Windows está portada pero menos probada que la de Linux. Si algo
 > falla, abre un issue con el mensaje de error.
 
@@ -148,11 +153,16 @@ alternativas.
 | Deezer | API pública |
 | SoundCloud / Mixcloud | yt-dlp |
 | Bandcamp y otros | yt-dlp |
-| Amazon Music / Nonoki | lista de texto o `.txt` |
+| Amazon Music | API web pública (listas, álbumes, artistas y canciones) |
+| Nonoki | lista de texto o `.txt` |
 
-Amazon Music y Nonoki (ahora Zozoki) no permiten leer sus listas sin cuenta.
-Copia las canciones en un `.txt`, una por línea, y usa la opción de lista de
-texto. El audio se busca igualmente en YouTube/SoundCloud.
+Amazon Music se lee directamente de su catálogo público, sin cuenta: pega la
+URL de una playlist, un álbum, un artista o una canción y se obtienen sus
+pistas. En los artistas se toman las canciones populares que muestra su ficha.
+
+Nonoki (ahora Zozoki) no publica sus listas. Copia las canciones en un `.txt`,
+una por línea, y usa la opción de lista de texto. El audio se busca igualmente
+en YouTube/SoundCloud.
 
 ### Spotify
 

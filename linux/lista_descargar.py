@@ -3,9 +3,10 @@
 """Descarga una lista de musica buscando el audio en YouTube y SoundCloud.
 
 La entrada puede ser:
-  - Un enlace de Spotify, Deezer, YouTube, YouTube Music, SoundCloud o Mixcloud.
+  - Un enlace de Spotify, Deezer, Amazon Music, YouTube, YouTube Music,
+    SoundCloud o Mixcloud.
   - La ruta de un archivo .txt con una cancion por linea ("Artista - Titulo"),
-    util para Amazon Music, Nonoki o cualquier lista copiada a mano.
+    util para Nonoki o cualquier lista copiada a mano.
 
 Cada pista se busca primero en YouTube; si no hay una coincidencia clara se
 prueba SoundCloud y, como ultimo recurso, se reintenta con el titulo canonico
