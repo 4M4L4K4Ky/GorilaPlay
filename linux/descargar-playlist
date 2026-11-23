@@ -24,9 +24,8 @@ mkdir -p "$ESTADO"
 
 # 0. Qué hacemos
 ACCION=$(kdialog --title "$TITULO" --menu "¿Qué quieres hacer?" \
-    descargar "Descargar vídeo o lista (YouTube, Spotify, Deezer...)" \
-    texto     "Descargar una lista pegada o de un archivo .txt" \
-    caratulas "Poner carátula a las canciones de una carpeta") || exit 0
+    descargar "Descargar música o playlist" \
+    caratulas "Poner carátulas a la música") || exit 0
 
 # ---------------------------------------------------------------- carátulas
 if [ "$ACCION" = caratulas ]; then
@@ -91,54 +90,45 @@ Instálalo con:  pipx install yt-dlp"
     exit 1
 fi
 
-# ---------------------------------------------------------------- lista de texto
-if [ "$ACCION" = texto ]; then
-    if [ ! -f "$LISTA" ] || [ ! -f "$FUENTES" ] || [ ! -f "$BUSQUEDA" ]; then
-        kdialog --title "$TITULO" --error "Faltan los módulos del motor de listas.
-Vuelve a ejecutar el instalador."
-        exit 1
-    fi
-    ENTRADA=$(kdialog --title "$TITULO" --menu \
-        "¿De dónde sacamos las canciones?" \
-        pegar   "Pegar las canciones (una por línea: Artista - Título)" \
-        archivo "Elegir un archivo .txt") || exit 0
-    case "$ENTRADA" in
-        pegar)
-            TEXTO=$(kdialog --title "$TITULO" --textinputbox \
-                "Pega una canción por línea, con el formato  Artista - Título:" \
-                "") || exit 0
-            [ -z "${TEXTO//[[:space:]]/}" ] && exit 0
-            ORIGEN_TXT="$TEXTO"
-            ;;
-        archivo)
-            ARCHIVO_TXT=$(kdialog --title "$TITULO" \
-                --getopenfilename "$HOME" "*.txt *.TXT") || exit 0
-            [ -z "$ARCHIVO_TXT" ] && exit 0
-            ORIGEN_TXT="$ARCHIVO_TXT"
-            ;;
-        *) exit 0 ;;
-    esac
-    NOMBRE_LISTA=$(kdialog --title "$TITULO" --inputbox \
-        "Nombre de la carpeta donde guardar las canciones:" \
-        "Mi lista") || exit 0
-    [ -z "$NOMBRE_LISTA" ] && NOMBRE_LISTA="Mi lista"
-    TIPO=lista
-else
-    # 1. URL
-    URL=$(kdialog --title "$TITULO" \
-        --inputbox "Pega la dirección del vídeo o de la lista.
+# 1. Origen: URL de la lista o ruta de un .txt
+URL=$(kdialog --title "$TITULO" --inputbox \
+    "Pega la dirección de la lista o del vídeo.
 
 Sirven YouTube, YouTube Music, Spotify, Deezer, Amazon Music,
-SoundCloud, Mixcloud y Bandcamp. Para Nonoki usa la opción
-'Descargar una lista pegada o de un archivo .txt'." \
-        "https://www.youtube.com/playlist?list=") || exit 0
-    URL="${URL// /}"
-    [ -z "$URL" ] && exit 0
-    case "$URL" in
-        http*) ;;
-        *) kdialog --title "$TITULO" --error "Eso no parece una dirección web."; exit 1 ;;
-    esac
+SoundCloud, Mixcloud y Bandcamp.
 
+También puedes pegar la ruta de un archivo .txt con una canción
+por línea (Artista - Título), por ejemplo para listas de Nonoki." \
+    "https://www.youtube.com/playlist?list=") || exit 0
+URL="$(printf '%s' "$URL" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+[ -z "$URL" ] && exit 0
+
+ENTRADA_TXT=""
+case "$URL" in
+    http*) ;;
+    *.txt|*.TXT)
+        RUTA_TXT="${URL/#\~/$HOME}"
+        if [ -f "$RUTA_TXT" ]; then
+            if [ ! -f "$LISTA" ] || [ ! -f "$FUENTES" ] || [ ! -f "$BUSQUEDA" ]; then
+                kdialog --title "$TITULO" --error "Faltan los módulos del motor de listas.
+Vuelve a ejecutar el instalador."
+                exit 1
+            fi
+            ENTRADA_TXT="$(readlink -f "$RUTA_TXT")"
+            NOMBRE_LISTA="$(basename "$ENTRADA_TXT" .txt)"
+            TIPO=lista
+        else
+            kdialog --title "$TITULO" --error "No encuentro ese archivo .txt."
+            exit 1
+        fi
+        ;;
+    *)
+        kdialog --title "$TITULO" --error "Pega una dirección web o la ruta de un archivo .txt."
+        exit 1
+        ;;
+esac
+
+if [ -z "$ENTRADA_TXT" ]; then
     # YouTube de vídeo sigue por el camino clásico; el resto usa el motor
     # de listas, que tiene alternativas si una canción falta.
     case "$URL" in
@@ -174,20 +164,9 @@ RUNNER="$(mktemp "$ESTADO/runner-XXXXXX.sh")"
 
 if [ "$TIPO" = lista ]; then
     BITRATE="${OPCION#mp3-}"
-    if [ "$ACCION" = texto ]; then
-        ENTRADA_LISTA="$ORIGEN_TXT"
+    if [ -n "$ENTRADA_TXT" ]; then
+        ENTRADA_LISTA="$ENTRADA_TXT"
         CABECERA="Lista propia: $NOMBRE_LISTA"
-        # si es texto pegado, se guarda en un .txt temporal para no pelearse
-        # con los saltos de línea al pasarlo como argumento
-        case "$ENTRADA_LISTA" in
-            /*) ;;
-            *)
-                TMP_TXT="$ESTADO/lista-$(date +%Y%m%d-%H%M%S).txt"
-                printf '%s\n' "$ENTRADA_LISTA" > "$TMP_TXT"
-                ENTRADA_LISTA="$TMP_TXT"
-                ;;
-        esac
-        # el nombre de la carpeta lo decide la persona, no el archivo
         ARGS_LISTA=(--nombre "$NOMBRE_LISTA")
     else
         ENTRADA_LISTA="$URL"

@@ -123,11 +123,12 @@ con búsqueda alternativa en YouTube y SoundCloud.
 ## Uso
 
 1. Abre **GorilaPlay**.
-2. Elige **Descargar vídeo o lista**.
-3. Pega la URL de la lista (o de un vídeo de YouTube).
+2. Elige **Descargar música o playlist**.
+3. Pega la URL de la lista (o de un vídeo de YouTube). También acepta la ruta
+   de un archivo `.txt`.
 4. Elige el formato.
 5. Elige la carpeta de destino (por defecto `~/Música`).
-6. Pulsa **Descargar** y espera.
+6. Pulsa **Aceptar** y espera.
 
 Resultado:
 
@@ -139,10 +140,26 @@ Resultado:
     └── ...
 ```
 
-Si una canción no aparece, prueba la opción **Descargar una lista pegada o de
-un archivo .txt**: eliges un `.txt` o pegas las canciones (una por línea, con
-el formato `Artista - Título`) y GorilaPlay hace la misma búsqueda con
-alternativas.
+Si una canción no aparece, prueba el motor de listas con alternativas: en el
+mismo cuadro pega la ruta de un `.txt` con una canción por línea y el formato
+`Artista - Título`. También puedes lanzarlo desde la terminal con
+`gorilaplay-lista ~/listas/mi-lista.txt ~/Música`.
+
+### Capturas
+
+Menú principal y pegado del enlace:
+
+<p align="center">
+  <img src="assets/captura-menu.png" alt="Menú principal de GorilaPlay" width="300">
+  <img src="assets/captura-url.png" alt="Cuadro para pegar la dirección de la lista" width="440">
+</p>
+
+Elección del formato y de las carátulas:
+
+<p align="center">
+  <img src="assets/captura-formato.png" alt="Elección del formato de audio" width="380">
+  <img src="assets/captura-caratulas.png" alt="Opciones para poner carátulas" width="330">
+</p>
 
 ### Plataformas
 
@@ -161,8 +178,8 @@ URL de una playlist, un álbum, un artista o una canción y se obtienen sus
 pistas. En los artistas se toman las canciones populares que muestra su ficha.
 
 Nonoki (ahora Zozoki) no publica sus listas. Copia las canciones en un `.txt`,
-una por línea, y usa la opción de lista de texto. El audio se busca igualmente
-en YouTube/SoundCloud.
+una por línea, y pega su ruta en el primer cuadro de **Descargar música o
+playlist**. El audio se busca igualmente en YouTube/SoundCloud.
 
 ### Spotify
 
@@ -183,7 +200,7 @@ Al descargar se hace solo. Para música que ya tienes, GorilaPlay también pone
 carátulas a una carpeta entera:
 
 1. Abre **GorilaPlay**.
-2. Elige **Poner carátula a las canciones de una carpeta**.
+2. Elige **Poner carátulas a la música**.
 3. Selecciona la carpeta.
 4. Elige si solo toca las que no tienen carátula o si las reemplaza todas.
 

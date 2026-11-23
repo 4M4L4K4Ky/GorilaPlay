@@ -55,7 +55,7 @@ SIN_LECTURA = {
     "nonoki": ("Nonoki (Zozoki) no publica sus listas ni tiene API abierta.\n\n"
                "Copia las canciones en un archivo .txt, una por linea con el\n"
                "formato:  Artista - Titulo\n"
-               "Luego usa la opcion 'Descargar desde una lista de texto'."),
+               "Luego pega la ruta del .txt en 'Descargar musica o playlist'."),
 }
 
 # Amazon Music: endpoints web que usa su propio reproductor. No hace falta
