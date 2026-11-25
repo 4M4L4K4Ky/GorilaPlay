@@ -11,6 +11,23 @@
 
 ---
 
+## Descargar
+
+### [⬇ Descargar la última versión](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)
+
+No hace falta saber git ni escribir comandos para llegar al archivo:
+
+1. Entra en **[Releases](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)**.
+2. En la sección **Assets**, descarga el archivo `GorilaPlay-X.Y.Z.zip`.
+3. Descomprime el ZIP.
+4. Instala según tu sistema:
+   - **Linux:** abre una terminal en la carpeta y ejecuta `./linux/instalar.sh`.
+   - **macOS:** abre una terminal en la carpeta y ejecuta `./macos/instalar.sh`.
+   - **Windows:** doble clic en `windows\GorilaPlay.cmd`.
+
+Más abajo están los detalles de cada sistema y las dependencias. Si prefieres
+usar git, también tienes los comandos para clonar el repositorio.
+
 ## Qué es
 
 GorilaPlay es un lanzador sencillo para [yt-dlp](https://github.com/yt-dlp/yt-dlp)
@@ -75,6 +92,16 @@ sudo dnf install kdialog konsole
 
 Instalación:
 
+Descarga el ZIP de la
+[última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest),
+descomprímelo y ejecuta desde esa carpeta:
+
+```bash
+./linux/instalar.sh
+```
+
+Si prefieres usar git:
+
 ```bash
 git clone https://github.com/4M4L4K4Ky/GorilaPlay.git
 cd GorilaPlay
@@ -90,6 +117,16 @@ desde una terminal con `descargar-playlist` y poner carátulas con
 Requisitos: macOS 11 o superior y [Homebrew](https://brew.sh). El instalador
 prepara Python, FFmpeg, yt-dlp y mutagen en una carpeta propia, sin tocar el
 Python del sistema.
+
+Descarga el ZIP de la
+[última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest),
+descomprímelo y ejecuta desde esa carpeta:
+
+```bash
+./macos/instalar.sh
+```
+
+Si prefieres usar git:
 
 ```bash
 git clone https://github.com/4M4L4K4Ky/GorilaPlay.git
@@ -127,7 +164,9 @@ El programa también funciona en Windows con un port en PowerShell.
 
    Cierra y abre la terminal para que coja el PATH.
 
-2. Descarga este repositorio (botón *Code → Download ZIP*) y descomprímelo.
+2. Descarga el ZIP de la
+   [última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)
+   y descomprímelo.
 
 3. Haz doble clic en `windows\GorilaPlay.cmd`.
 
