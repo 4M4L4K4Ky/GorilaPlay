@@ -12,7 +12,7 @@ DATOS="$HOME/.local/share/gorilaplay"
 ESTADO="$HOME/.local/state/gorilaplay"
 APPS="$HOME/Applications"
 APP="$APPS/GorilaPlay.app"
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$BIN:$PATH"
 
@@ -101,8 +101,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>GorilaPlay</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.1.0</string>
-    <key>CFBundleVersion</key><string>1.1.0</string>
+    <key>CFBundleShortVersionString</key><string>1.2.0</string>
+    <key>CFBundleVersion</key><string>1.2.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key><string>11.0</string>
     <key>NSHighResolutionCapable</key><true/>

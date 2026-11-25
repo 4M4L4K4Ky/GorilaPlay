@@ -3,7 +3,7 @@
 # Motor: yt-dlp, FFmpeg y los módulos de la carpeta motor/.
 set -u
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 DATOS="$HOME/.local/share/gorilaplay"
 ESTADO="$HOME/.local/state/gorilaplay"
 BIN="$HOME/.local/bin"
