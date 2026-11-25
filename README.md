@@ -85,6 +85,36 @@ Queda en el menú de aplicaciones como **GorilaPlay**. También puedes lanzarlo
 desde una terminal con `descargar-playlist` y poner carátulas con
 `gorilaplay-caratulas <carpeta>`.
 
+## Instalación en macOS
+
+Requisitos: macOS 11 o superior y [Homebrew](https://brew.sh). El instalador
+prepara Python, FFmpeg, yt-dlp y mutagen en una carpeta propia, sin tocar el
+Python del sistema.
+
+```bash
+git clone https://github.com/4M4L4K4Ky/GorilaPlay.git
+cd GorilaPlay
+./macos/instalar.sh
+```
+
+Si falta Python o FFmpeg, el instalador avisa y los instala con Homebrew (pide
+confirmación antes). Deja la aplicación en `~/Applications/GorilaPlay.app`, que
+puedes abrir desde Finder o Launchpad, y estos comandos en `~/.local/bin`:
+
+```bash
+gorilaplay             # interfaz con diálogos del sistema
+gorilaplay-lista       # descargar una lista desde la terminal
+gorilaplay-caratulas   # poner carátulas a una carpeta
+```
+
+La primera vez, macOS puede avisar de que la aplicación no está firmada. Abre
+`GorilaPlay.app` con clic derecho → *Abrir*, o ve a *Ajustes del Sistema →
+Privacidad y seguridad* y elige *Abrir igualmente*.
+
+La versión de macOS usa el mismo motor que la de Linux, así que también lee
+Amazon Music, Spotify, Deezer, SoundCloud y las demás plataformas. Para el
+audio y el vídeo necesita `yt-dlp` y `ffmpeg`, que ya instala el script.
+
 ## Instalación en Windows
 
 El programa también funciona en Windows con un port en PowerShell.
@@ -237,7 +267,7 @@ orden de búsqueda, `--sin-caratula` y `--nombre "Mi carpeta"`.
 
 ### Datos y registros
 
-| Qué | Dónde (Linux) | Dónde (Windows) |
+| Qué | Dónde (Linux y macOS) | Dónde (Windows) |
 |---|---|---|
 | Descargas ya hechas | `~/.local/state/gorilaplay/descargados.txt` | `%LOCALAPPDATA%\GorilaPlay\descargados.txt` |
 | Logs | `~/.local/state/gorilaplay/*.log` | `%LOCALAPPDATA%\GorilaPlay\*.log` |
@@ -247,7 +277,14 @@ Borra el archivo de registro si quieres volver a descargar algo que ya bajaste.
 ## Problemas frecuentes
 
 **No aparece la ventana / no sale el selector de carpeta**
-Falta `kdialog` o `konsole`: instálalos con el gestor de paquetes.
+En Linux falta `kdialog` o `konsole`: instálalos con el gestor de paquetes.
+En macOS, vuelve a ejecutar `./macos/instalar.sh`; los diálogos son del sistema
+y no necesitan nada más.
+
+**En macOS dice que GorilaPlay no se puede abrir**
+Es el aviso de una aplicación sin firma. Clic derecho sobre
+`GorilaPlay.app` → *Abrir*, o *Ajustes del Sistema → Privacidad y seguridad* →
+*Abrir igualmente*.
 
 **"No encuentro yt-dlp"**
 Instálalo con `pipx install yt-dlp` y comprueba que `~/.local/bin` está en el PATH.
@@ -272,6 +309,7 @@ renombrar el archivo como `Artista - Título.mp3`, que es lo que usa para buscar
 GorilaPlay/
 ├── assets/          icono (svg, png 1024/512/256, ico)
 ├── linux/           lanzador bash + motor de listas + carátulas + instalador
+├── macos/           lanzador con diálogos del sistema + instalador
 ├── windows/         port en PowerShell + lanzador .cmd
 ├── LICENSE
 └── README.md

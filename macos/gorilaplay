@@ -1,0 +1,226 @@
+#!/bin/bash
+# GorilaPlay - interfaz de macOS: diálogos del sistema y Terminal.
+# Motor: yt-dlp, FFmpeg y los módulos de la carpeta motor/.
+set -u
+
+VERSION="1.1.0"
+DATOS="$HOME/.local/share/gorilaplay"
+ESTADO="$HOME/.local/state/gorilaplay"
+BIN="$HOME/.local/bin"
+PY="$DATOS/venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3 || true)"
+LISTA="$DATOS/lista_descargar.py"
+CARATULAS="$DATOS/caratulas.py"
+TITULO="GorilaPlay"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$BIN:$PATH"
+mkdir -p "$ESTADO"
+
+alerta() {
+    GORILA_MSG="$1" osascript - 2>/dev/null <<'AS' || true
+set msg to system attribute "GORILA_MSG"
+display alert "GorilaPlay" message msg as critical
+AS
+}
+
+abrir_runner() {
+    if command -v open >/dev/null 2>&1; then
+        open "$1"
+    else
+        bash "$1"
+    fi
+}
+
+pie_runner() {
+    local destino="$1" log="$2" runner="$3" exito="$4"
+    echo 'echo'
+    echo 'if [ "$rc" -eq 0 ]; then'
+    printf '    echo "Terminado. Archivos en: %s"\n' "$destino"
+    printf '    osascript -e "display notification \\"%s\\" with title \\"GorilaPlay\\"" >/dev/null 2>&1 || true\n' "$exito"
+    echo '    sleep 2'
+    echo 'else'
+    printf '    echo "Ha habido errores (código $rc). Log: %s"\n' "$log"
+    echo '    osascript -e "display notification \"GorilaPlay terminó con errores\" with title \"GorilaPlay\"" >/dev/null 2>&1 || true'
+    echo '    read -r -p "Pulsa Enter para cerrar..." _'
+    echo 'fi'
+    printf 'rm -f %q\n' "$runner"
+}
+
+if [ ! -f "$LISTA" ] || [ ! -f "$CARATULAS" ] || [ -z "$PY" ]; then
+    alerta "No encuentro los archivos de GorilaPlay. Vuelve a ejecutar instalar.sh."
+    exit 1
+fi
+
+ACCION=$(osascript - 2>/dev/null <<'AS'
+set r to choose from list {"Descargar música o playlist", "Poner carátulas a la música"} with title "GorilaPlay" with prompt "¿Qué quieres hacer?" default items {"Descargar música o playlist"}
+if r is false then error number -128
+if item 1 of r is "Descargar música o playlist" then return "descargar"
+return "caratulas"
+AS
+) || exit 0
+
+# ---------------------------------------------------------------- carátulas
+if [ "$ACCION" = caratulas ]; then
+    DESTINO=$(osascript - 2>/dev/null <<'AS'
+set r to choose folder with prompt "Elige la carpeta de música"
+return POSIX path of r
+AS
+    ) || exit 0
+    DESTINO="${DESTINO%/}"
+
+    MODO=$(osascript - 2>/dev/null <<'AS'
+set r to choose from list {"Solo las que no tienen carátula", "Todas, reemplazando la carátula actual"} with title "GorilaPlay" with prompt "¿Qué canciones quieres tocar?" default items {"Solo las que no tienen carátula"}
+if r is false then error number -128
+if item 1 of r is "Solo las que no tienen carátula" then return "faltantes"
+return "todas"
+AS
+    ) || exit 0
+    EXTRA=""
+    [ "$MODO" = todas ] && EXTRA="--reemplazar"
+
+    LOG="$ESTADO/caratulas-$(date +%Y%m%d-%H%M%S).log"
+    RUNNER="$ESTADO/caratulas-$(date +%Y%m%d-%H%M%S).command"
+    {
+        echo '#!/bin/bash'
+        printf 'export PATH="/opt/homebrew/bin:/usr/local/bin:%s:$PATH"\n' "$BIN"
+        printf 'echo "GorilaPlay %s - carátulas"\necho\n' "$VERSION"
+        printf 'echo %q\necho\n' "Carpeta: $DESTINO"
+        printf '%q %q %q' "$PY" "$CARATULAS" "$DESTINO"
+        [ -n "$EXTRA" ] && printf ' %q' "$EXTRA"
+        printf ' 2>&1 | tee %q\n' "$LOG"
+        echo 'rc=${PIPESTATUS[0]}'
+        pie_runner "$DESTINO" "$LOG" "$RUNNER" "Carátulas puestas"
+    } > "$RUNNER"
+    chmod +x "$RUNNER"
+    abrir_runner "$RUNNER"
+    exit 0
+fi
+
+# ---------------------------------------------------------------- descarga
+URL=$(osascript - 2>/dev/null <<'AS'
+set msg to "Pega la dirección de la lista o del vídeo." & return & return & "Sirven YouTube, YouTube Music, Spotify, Deezer, Amazon Music, SoundCloud, Mixcloud y Bandcamp." & return & return & "También puedes pegar la ruta de un archivo .txt con una canción por línea (Artista - Título)."
+set r to display dialog msg default answer "https://www.youtube.com/playlist?list=" buttons {"Cancelar", "Aceptar"} default button "Aceptar" with title "GorilaPlay"
+return text returned of r
+AS
+) || exit 0
+URL="$(printf '%s' "$URL" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+[ -z "$URL" ] && exit 0
+
+ENTRADA_TXT=""
+TIPO=""
+case "$URL" in
+    http*) ;;
+    *.txt|*.TXT)
+        RUTA_TXT="${URL/#\~/$HOME}"
+        if [ -f "$RUTA_TXT" ]; then
+            ENTRADA_TXT="$(cd "$(dirname "$RUTA_TXT")" && pwd)/$(basename "$RUTA_TXT")"
+            NOMBRE_LISTA="$(basename "$ENTRADA_TXT" .txt)"
+            TIPO=lista
+        else
+            alerta "No encuentro ese archivo .txt."
+            exit 1
+        fi
+        ;;
+    *)
+        alerta "Pega una dirección web o la ruta de un archivo .txt."
+        exit 1
+        ;;
+esac
+
+if [ -z "$ENTRADA_TXT" ]; then
+    case "$URL" in
+        *music.youtube.com*)      TIPO=lista ;;
+        *youtube.com*|*youtu.be*) TIPO=yt ;;
+        *)                        TIPO=lista ;;
+    esac
+fi
+
+if [ "$TIPO" = yt ]; then
+    OPCION=$(osascript - 2>/dev/null <<'AS'
+set r to choose from list {"Audio MP3 320 kbps", "Audio MP3 192 kbps", "Audio original (m4a)", "Vídeo (hasta 1080p)"} with title "GorilaPlay" with prompt "¿Qué quieres descargar?" default items {"Audio MP3 320 kbps"}
+if r is false then error number -128
+if item 1 of r is "Audio MP3 320 kbps" then return "mp3-320"
+if item 1 of r is "Audio MP3 192 kbps" then return "mp3-192"
+if item 1 of r is "Audio original (m4a)" then return "m4a"
+return "video"
+AS
+    ) || exit 0
+else
+    OPCION=$(osascript - 2>/dev/null <<'AS'
+set r to choose from list {"Audio MP3 320 kbps", "Audio MP3 192 kbps"} with title "GorilaPlay" with prompt "Solo audio (se busca la mejor fuente para cada canción)" default items {"Audio MP3 320 kbps"}
+if r is false then error number -128
+if item 1 of r is "Audio MP3 320 kbps" then return "mp3-320"
+return "mp3-192"
+AS
+    ) || exit 0
+fi
+
+DESTINO=$(osascript - 2>/dev/null <<'AS'
+set r to choose folder with prompt "Elige la carpeta donde guardar la música"
+return POSIX path of r
+AS
+) || exit 0
+DESTINO="${DESTINO%/}"
+[ -z "$DESTINO" ] && exit 0
+
+ARCHIVO="$ESTADO/descargados.txt"
+LOG="$ESTADO/$(date +%Y%m%d-%H%M%S).log"
+RUNNER="$ESTADO/gorilaplay-$(date +%Y%m%d-%H%M%S).command"
+
+if [ "$TIPO" = yt ]; then
+    YTDLP="$DATOS/venv/bin/yt-dlp"
+    [ -x "$YTDLP" ] || YTDLP="$BIN/yt-dlp"
+    [ -x "$YTDLP" ] || YTDLP="$(command -v yt-dlp || true)"
+    if [ -z "$YTDLP" ]; then
+        alerta "No encuentro yt-dlp. Vuelve a ejecutar instalar.sh."
+        exit 1
+    fi
+    PLANTILLA="$DESTINO/%(playlist_title,playlist_id|Sueltas)s/%(artist,creator,uploader,channel)s - %(title)s.%(ext)s"
+    case "$OPCION" in
+        mp3-320) ARGS=(-x --audio-format mp3 --audio-quality 320K --embed-metadata --embed-thumbnail) ;;
+        mp3-192) ARGS=(-x --audio-format mp3 --audio-quality 192K --embed-metadata --embed-thumbnail) ;;
+        m4a)     ARGS=(-f "bestaudio[ext=m4a]/bestaudio" --embed-metadata --embed-thumbnail) ;;
+        video)   ARGS=(-f "bv*[height<=1080]+ba/b[height<=1080]" --merge-output-format mp4 --embed-metadata) ;;
+        *) exit 0 ;;
+    esac
+    {
+        echo '#!/bin/bash'
+        printf 'export PATH="/opt/homebrew/bin:/usr/local/bin:%s:$PATH"\n' "$BIN"
+        printf 'echo "GorilaPlay %s"\necho\n' "$VERSION"
+        printf 'echo %q\necho\n' "Origen: $URL"
+        printf '%q ' "$YTDLP" "${ARGS[@]}"
+        printf '%q ' --output "$PLANTILLA" --download-archive "$ARCHIVO" \
+            --no-overwrites --ignore-errors --newline --retries 5 \
+            --fragment-retries 5 --sleep-requests 1 "$URL"
+        printf '2>&1 | tee %q\n' "$LOG"
+        echo 'rc=${PIPESTATUS[0]}'
+        pie_runner "$DESTINO" "$LOG" "$RUNNER" "Descarga terminada"
+    } > "$RUNNER"
+else
+    BITRATE="${OPCION#mp3-}"
+    if [ -n "$ENTRADA_TXT" ]; then
+        ENTRADA_LISTA="$ENTRADA_TXT"
+        CABECERA="Lista propia: $NOMBRE_LISTA"
+        ARGS_LISTA=(--nombre "$NOMBRE_LISTA")
+    else
+        ENTRADA_LISTA="$URL"
+        CABECERA="Origen: $URL"
+        ARGS_LISTA=()
+    fi
+    {
+        echo '#!/bin/bash'
+        printf 'export PATH="/opt/homebrew/bin:/usr/local/bin:%s:$PATH"\n' "$BIN"
+        printf 'echo "GorilaPlay %s - lista"\necho\n' "$VERSION"
+        printf 'echo %q\necho\n' "$CABECERA"
+        printf '%q %q %q %q %q' "$PY" "$LISTA" "$ENTRADA_LISTA" "$DESTINO" "$BITRATE"
+        if [ "${#ARGS_LISTA[@]}" -gt 0 ]; then
+            printf ' %q' "${ARGS_LISTA[@]}"
+        fi
+        printf ' 2>&1 | tee %q\n' "$LOG"
+        echo 'rc=${PIPESTATUS[0]}'
+        pie_runner "$DESTINO" "$LOG" "$RUNNER" "Descarga terminada"
+    } > "$RUNNER"
+fi
+
+chmod +x "$RUNNER"
+abrir_runner "$RUNNER"
+exit 0
