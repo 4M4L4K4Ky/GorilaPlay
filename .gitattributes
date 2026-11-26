@@ -1,0 +1,5 @@
+# Los scripts de Windows necesitan CRLF al descargarse desde la release.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+# Los scripts de Unix, LF.
+*.sh text eol=lf

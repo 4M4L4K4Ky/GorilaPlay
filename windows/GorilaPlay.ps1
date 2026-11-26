@@ -1,44 +1,137 @@
-# GorilaPlay (Windows)
-# Descargador de playlists de YouTube y Spotify con interfaz grafica.
-# Requiere: yt-dlp.exe y ffmpeg.exe (el script descarga yt-dlp si falta).
+﻿# GorilaPlay (Windows)
+# Descargador de playlists con interfaz grafica.
+# Requiere yt-dlp y ffmpeg: el programa los descarga en bin\ si faltan.
+#
+# Uso normal: doble clic en GorilaPlay.cmd
+# Modo preparar (sin ventana, para el instalador): -Preparar
+
+param([switch]$Preparar)
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $ErrorActionPreference = "Stop"
+$Version = "1.2.1"
+
+# Windows PowerShell 5.1 no activa TLS 1.2 por defecto y GitHub lo exige.
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+}
+catch { }
+$ProgressPreference = "SilentlyContinue"
+
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$BinDir = Join-Path $Root "bin"
-$YtDlp = Join-Path $BinDir "yt-dlp.exe"
-$Estado = Join-Path $env:LOCALAPPDATA "GorilaPlay"
+$BaseDatos = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { $env:TEMP }
+$Estado = Join-Path $BaseDatos "GorilaPlay"
 $Archivo = Join-Path $Estado "descargados.txt"
-New-Item -ItemType Directory -Force -Path $BinDir, $Estado | Out-Null
+$Registro = New-Object System.Text.StringBuilder
+New-Item -ItemType Directory -Force -Path $Estado | Out-Null
+
+# Las dependencias van junto al programa; si la carpeta es de solo lectura
+# (por ejemplo, dentro del ZIP o en Archivos de programa), se usa otra ruta.
+$BinDir = Join-Path $Root "bin"
+try {
+    New-Item -ItemType Directory -Force -Path $BinDir -ErrorAction Stop | Out-Null
+    $prueba = Join-Path $BinDir ".escritura"
+    Set-Content -Path $prueba -Value "ok" -ErrorAction Stop
+    Remove-Item -Force $prueba -ErrorAction SilentlyContinue
+}
+catch {
+    $BinDir = Join-Path $Estado "bin"
+    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+}
+
+$YtDlp = Join-Path $BinDir "yt-dlp.exe"
+$FFmpeg = Join-Path $BinDir "ffmpeg.exe"
+$FFprobe = Join-Path $BinDir "ffprobe.exe"
 
 # ---------- utilidades ----------
 function Escribir([string]$texto, [System.Windows.Forms.RichTextBox]$log) {
+    [void]$Registro.AppendLine($texto)
+    if ($null -eq $log) {
+        Write-Host $texto
+        return
+    }
     $log.AppendText($texto + "`r`n")
     $log.SelectionStart = $log.TextLength
     $log.ScrollToCaret()
     [System.Windows.Forms.Application]::DoEvents()
 }
 
+function Guardar-Registro {
+    try {
+        $ruta = Join-Path $Estado "gorilaplay.log"
+        Set-Content -Path $ruta -Value $Registro.ToString() -Encoding UTF8
+    }
+    catch { }
+}
+
+function Descargar-Archivo([string]$url, [string]$destino) {
+    $intentos = 0
+    while ($true) {
+        $intentos++
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $destino -UseBasicParsing -TimeoutSec 300
+            if (Test-Path $destino -PathType Leaf) { return }
+            throw "la descarga quedo vacia"
+        }
+        catch {
+            if ($intentos -ge 3) {
+                throw "No he podido descargar $url`n$($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
 function Asegurar-YtDlp([System.Windows.Forms.RichTextBox]$log) {
     if (Test-Path $YtDlp) { return }
     Escribir "Descargando yt-dlp.exe..." $log
-    $url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-    Invoke-WebRequest -Uri $url -OutFile $YtDlp -UseBasicParsing
+    $tmp = $YtDlp + ".parcial"
+    try {
+        Descargar-Archivo "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" $tmp
+        Move-Item -Force $tmp $YtDlp
+    }
+    finally {
+        Remove-Item -Force $tmp -ErrorAction SilentlyContinue
+    }
     Escribir "yt-dlp listo." $log
+}
+
+function Asegurar-FFmpeg([System.Windows.Forms.RichTextBox]$log) {
+    if ((Test-Path $FFmpeg) -and (Test-Path $FFprobe)) { return }
+    # Si ya estan instalados y en el PATH, no se descarga nada.
+    if ((Get-Command ffmpeg -ErrorAction SilentlyContinue) -and (Get-Command ffprobe -ErrorAction SilentlyContinue)) { return }
+    Escribir "Descargando FFmpeg (solo la primera vez, son unos 80 MB)..." $log
+    $id = [guid]::NewGuid().ToString("N")
+    $zip = Join-Path $env:TEMP "gp_ffmpeg_$id.zip"
+    $tmp = Join-Path $env:TEMP "gp_ffmpeg_$id"
+    try {
+        Descargar-Archivo "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" $zip
+        Expand-Archive -Path $zip -DestinationPath $tmp -Force
+        foreach ($nombre in @("ffmpeg.exe", "ffprobe.exe")) {
+            $encontrado = Get-ChildItem -Path $tmp -Filter $nombre -Recurse -File | Select-Object -First 1
+            if (-not $encontrado) { throw "El paquete de FFmpeg no trae $nombre." }
+            Copy-Item -Force $encontrado.FullName (Join-Path $BinDir $nombre)
+        }
+    }
+    finally {
+        Remove-Item -Force $zip -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+    Escribir "FFmpeg listo." $log
 }
 
 function Tiene-FFmpeg {
     $cmd = Get-Command ffmpeg -ErrorAction SilentlyContinue
     if ($cmd) { return $true }
-    return (Test-Path (Join-Path $BinDir "ffmpeg.exe"))
+    return (Test-Path $FFmpeg)
 }
 
 function FFmpegExe {
     $cmd = Get-Command ffmpeg -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    return (Join-Path $BinDir "ffmpeg.exe")
+    return $FFmpeg
 }
 
 function Ejecutar-YtDlp([string[]]$argumentos, [System.Windows.Forms.RichTextBox]$log) {
@@ -381,7 +474,7 @@ function Elegir-Candidato($candidatos, [int]$dur, [string]$titulo, [string]$arti
 function FFprobeExe {
     $cmd = Get-Command ffprobe -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    return (Join-Path $BinDir "ffprobe.exe")
+    return $FFprobe
 }
 
 function Tiene-Caratula([string]$ruta) {
@@ -457,8 +550,20 @@ function Poner-Caratula([string]$ruta, [System.Windows.Forms.RichTextBox]$log) {
 
 function Preparar-Motor([System.Windows.Forms.RichTextBox]$log) {
     Asegurar-YtDlp $log
-    if (-not (Tiene-FFmpeg)) {
-        throw "Falta ffmpeg. Instálalo con:  winget install Gyan.FFmpeg"
+    Asegurar-FFmpeg $log
+}
+
+# Modo sin ventana: lo usa instalar.ps1 para dejar las dependencias listas.
+if ($Preparar) {
+    try {
+        Asegurar-YtDlp $null
+        Asegurar-FFmpeg $null
+        Write-Host "Dependencias listas en $BinDir"
+        exit 0
+    }
+    catch {
+        Write-Host ("ERROR: " + $_.Exception.Message)
+        exit 1
     }
 }
 
@@ -503,14 +608,15 @@ function Pedir-Texto {
 
 # ---------- interfaz ----------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "GorilaPlay 1.2.0"
+$form.Text = "GorilaPlay $Version"
 $form.Size = New-Object System.Drawing.Size(760, 560)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(24, 27, 33)
 $form.ForeColor = [System.Drawing.Color]::White
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 if (Test-Path (Join-Path $Root "assets\icono.ico")) {
-    $form.Icon = New-Object System.Drawing.Icon((Join-Path $Root "assets\icono.ico"))
+    try { $form.Icon = New-Object System.Drawing.Icon((Join-Path $Root "assets\icono.ico")) }
+    catch { }
 }
 
 $lblUrl = New-Object System.Windows.Forms.Label
@@ -690,7 +796,8 @@ $btnCaratulas.Add_Click({
         $dlg.SelectedPath = $txtDestino.Text
         if ($dlg.ShowDialog() -ne "OK") { return }
         $carpeta = $dlg.SelectedPath
-        if (-not (Tiene-FFmpeg)) { throw "Falta ffmpeg. Instálalo con:  winget install Gyan.FFmpeg" }
+        if (-not (Tiene-FFmpeg)) { Asegurar-FFmpeg $log }
+        if (-not (Tiene-FFmpeg)) { throw "No he podido preparar ffmpeg." }
 
         $archivos = @(Get-ChildItem -Path $carpeta -Recurse -File |
             Where-Object { $_.Extension -in ".mp3", ".m4a" })
@@ -730,4 +837,20 @@ $btnCaratulas.Add_Click({
     finally { $btnCaratulas.Enabled = $true }
 })
 
-[void]$form.ShowDialog()
+try {
+    [void]$form.ShowDialog()
+}
+catch {
+    $mensaje = $_.Exception.Message
+    try { Escribir ("ERROR: " + $mensaje) $log } catch { }
+    try {
+        [void][System.Windows.Forms.MessageBox]::Show(
+            "GorilaPlay se ha cerrado por un error:`r`n`r`n$mensaje`r`n`r`n" +
+            "Prueba a ejecutar windows\instalar.cmd para reparar las dependencias.",
+            "GorilaPlay", "OK", "Error")
+    }
+    catch { }
+}
+finally {
+    Guardar-Registro
+}
