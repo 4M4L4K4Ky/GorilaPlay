@@ -3,7 +3,7 @@
 # Interfaz KDE: kdialog + konsole. Motor: yt-dlp, Deezer y Spotify.
 set -u
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 YTDLP="${YTDLP:-$(command -v yt-dlp || echo "$HOME/.local/bin/yt-dlp")}"
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATOS="$HOME/.local/share/gorilaplay"
