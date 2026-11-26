@@ -135,6 +135,12 @@ function FFmpegExe {
 }
 
 function Ejecutar-YtDlp([string[]]$argumentos, [System.Windows.Forms.RichTextBox]$log) {
+    # yt-dlp y ffmpeg no tienen por que estar en el PATH: se le dice donde mirar.
+    $ff = FFmpegExe
+    if ($ff -and (Test-Path $ff)) {
+        $carpetaFF = Split-Path -Parent $ff
+        if ($carpetaFF) { $argumentos = @("--ffmpeg-location", $carpetaFF) + $argumentos }
+    }
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $YtDlp
     $psi.Arguments = ($argumentos | ForEach-Object {
