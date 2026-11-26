@@ -54,8 +54,9 @@ if ($Origen -ne $Destino) {
 }
 
 # Quita la marca de "archivo descargado de internet", que puede bloquear el script.
-Get-ChildItem -Path $Destino -Recurse -File -ErrorAction SilentlyContinue |
-    Unblock-File -ErrorAction SilentlyContinue
+foreach ($archivo in @(Get-ChildItem -Path $Destino -Recurse -File -ErrorAction SilentlyContinue)) {
+    Unblock-File -LiteralPath $archivo.FullName -ErrorAction SilentlyContinue
+}
 
 Write-Host ""
 Write-Host "Descargando yt-dlp y ffmpeg (la primera vez tarda un poco)..."
