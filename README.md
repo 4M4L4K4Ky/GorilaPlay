@@ -11,22 +11,11 @@
 
 ---
 
-## Descargar
-
-### [⬇ Descargar la última versión](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)
-
-No hace falta saber git ni escribir comandos para llegar al archivo:
-
-1. Entra en **[Releases](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)**.
-2. En la sección **Assets**, descarga el archivo `GorilaPlay-X.Y.Z.zip`.
-3. Descomprime el ZIP.
-4. Instala según tu sistema:
-   - **Linux:** abre una terminal en la carpeta y ejecuta `./linux/instalar.sh`.
-   - **macOS:** abre una terminal en la carpeta y ejecuta `./macos/instalar.sh`.
-   - **Windows:** doble clic en `windows\GorilaPlay.cmd`.
-
-Más abajo están los detalles de cada sistema y las dependencias. Si prefieres
-usar git, también tienes los comandos para clonar el repositorio.
+<p align="center">
+  <a href="#instalación-en-linux-probado-en-kde--nobara">Linux</a> ·
+  <a href="#instalación-en-macos">macOS</a> ·
+  <a href="#instalación-en-windows">Windows</a>
+</p>
 
 ## Qué es
 
@@ -92,15 +81,16 @@ sudo dnf install kdialog konsole
 
 Instalación:
 
-Descarga el ZIP de la
-[última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest),
-descomprímelo y ejecuta desde esa carpeta:
+1. Entra en **[la última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)**
+   y, en la sección **Assets**, descarga `GorilaPlay-X.Y.Z.zip`.
+2. Descomprime el ZIP y abre una terminal dentro de esa carpeta.
+3. Ejecuta:
 
-```bash
-./linux/instalar.sh
-```
+   ```bash
+   ./linux/instalar.sh
+   ```
 
-Si prefieres usar git:
+Si prefieres usar git (hace falta tener git instalado):
 
 ```bash
 git clone https://github.com/4M4L4K4Ky/GorilaPlay.git
@@ -118,15 +108,18 @@ Requisitos: macOS 11 o superior y [Homebrew](https://brew.sh). El instalador
 prepara Python, FFmpeg, yt-dlp y mutagen en una carpeta propia, sin tocar el
 Python del sistema.
 
-Descarga el ZIP de la
-[última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest),
-descomprímelo y ejecuta desde esa carpeta:
+Instalación:
 
-```bash
-./macos/instalar.sh
-```
+1. Entra en **[la última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)**
+   y, en la sección **Assets**, descarga `GorilaPlay-X.Y.Z.zip`.
+2. Descomprime el ZIP y abre una terminal dentro de esa carpeta.
+3. Ejecuta:
 
-Si prefieres usar git:
+   ```bash
+   ./macos/instalar.sh
+   ```
+
+Si prefieres usar git (hace falta tener git instalado):
 
 ```bash
 git clone https://github.com/4M4L4K4Ky/GorilaPlay.git
@@ -154,29 +147,31 @@ audio y el vídeo necesita `yt-dlp` y `ffmpeg`, que ya instala el script.
 
 ## Instalación en Windows
 
-El programa también funciona en Windows con un port en PowerShell.
+Funciona en Windows 10 y 11 de 64 bits. No hace falta instalar Python, yt-dlp
+ni ffmpeg: el instalador los descarga en una carpeta del usuario y no toca nada
+del sistema.
 
-1. Instala **ffmpeg**:
+1. Entra en **[la última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)**
+   y, en la sección **Assets**, descarga `GorilaPlay-X.Y.Z.zip`.
+2. Clic derecho sobre el ZIP → **Extraer todo**. No ejecutes nada desde dentro
+   del ZIP: Windows no puede abrir los archivos así.
+3. En la carpeta extraída, haz doble clic en `windows\instalar.cmd`.
+4. Si SmartScreen avisa, elige **Más información → Ejecutar de todas formas**
+   (son scripts de texto plano; puedes abrirlos con el Bloc de notas).
+5. Espera: copia el programa a `%LOCALAPPDATA%\Programs\GorilaPlay`, descarga
+   `yt-dlp`, `ffmpeg` y `ffprobe`, y crea los accesos directos.
+6. Abre **GorilaPlay** desde el escritorio o desde el menú Inicio.
 
-   ```powershell
-   winget install Gyan.FFmpeg
-   ```
+Alternativa sin instalar: si prefieres no crear accesos directos, haz doble clic
+en `windows\GorilaPlay.cmd` dentro de la carpeta extraída. La primera vez
+descarga las dependencias en `windows\bin\`.
 
-   Cierra y abre la terminal para que coja el PATH.
-
-2. Descarga el ZIP de la
-   [última release](https://github.com/4M4L4K4Ky/GorilaPlay/releases/latest)
-   y descomprímelo.
-
-3. Haz doble clic en `windows\GorilaPlay.cmd`.
-
-La primera vez descarga `yt-dlp.exe` automáticamente en `windows\bin\`.
-Si Windows SmartScreen avisa, elige *Más información → Ejecutar de todas formas*
-(el script es texto plano, puedes leerlo antes).
+Si algo no arranca, abre `cmd` en la carpeta y ejecuta `windows\GorilaPlay.cmd`:
+la ventana se queda abierta con el mensaje de error. El registro de la última
+ejecución se guarda en `%LOCALAPPDATA%\GorilaPlay\gorilaplay.log`.
 
 El botón **CARÁTULAS** hace lo mismo que en Linux: elige una carpeta y pone
-portada a cada mp3/m4a que no la tenga (necesita `ffmpeg` y `ffprobe`, los dos
-vienen en el paquete de Gyan.FFmpeg).
+portada a cada mp3/m4a que no la tenga.
 
 El botón **LISTA .TXT** permite cargar un archivo de texto o pegar las
 canciones directamente, con el mismo formato `Artista - Título` por línea.
@@ -187,17 +182,17 @@ con búsqueda alternativa en YouTube y SoundCloud.
 > Linux. En Windows, usa el botón **LISTA .TXT** con las canciones copiadas.
 
 > La versión de Windows está portada pero menos probada que la de Linux. Si algo
-> falla, abre un issue con el mensaje de error.
+> falla, abre un issue con el mensaje de error y el archivo `gorilaplay.log`.
 
 ## Uso
 
 1. Abre **GorilaPlay**.
-2. Elige **Descargar música o playlist**.
-3. Pega la URL de la lista (o de un vídeo de YouTube). También acepta la ruta
-   de un archivo `.txt`.
-4. Elige el formato.
-5. Elige la carpeta de destino (por defecto `~/Música`).
-6. Pulsa **Aceptar** y espera.
+2. Pega la URL de la lista (o de un vídeo de YouTube, o la ruta de un `.txt`).
+   En Windows y macOS la ventana lo pide directamente; en Linux elige antes
+   **Descargar música o playlist**.
+3. Elige el formato.
+4. Elige la carpeta de destino (por defecto `~/Música`, o `Música` en Windows).
+5. Pulsa **Aceptar** (**DESCARGAR** en Windows) y espera.
 
 Resultado:
 
@@ -325,6 +320,21 @@ Es el aviso de una aplicación sin firma. Clic derecho sobre
 `GorilaPlay.app` → *Abrir*, o *Ajustes del Sistema → Privacidad y seguridad* →
 *Abrir igualmente*.
 
+**En Windows no aparece la ventana o se cierra sola**
+Abre `cmd` en la carpeta y ejecuta `windows\GorilaPlay.cmd`: así ves el mensaje.
+Lo más rápido suele ser volver a ejecutar `windows\instalar.cmd`, que repara las
+dependencias. El detalle queda en `%LOCALAPPDATA%\GorilaPlay\gorilaplay.log`.
+
+**En Windows dice que no encuentra yt-dlp o ffmpeg**
+Los descarga el instalador en `windows\bin\` o en
+`%LOCALAPPDATA%\Programs\GorilaPlay\bin\`. Si falló la descarga (sin internet,
+antivirus, proxy), vuelve a ejecutar `windows\instalar.cmd` con conexión.
+
+**Windows bloquea el archivo al abrirlo (SmartScreen)**
+*Más información → Ejecutar de todas formas*. Si el ZIP se descargó de internet,
+es normal que avise la primera vez. También puedes desbloquearlo desde las
+propiedades del ZIP antes de extraerlo.
+
 **"No encuentro yt-dlp"**
 Instálalo con `pipx install yt-dlp` y comprueba que `~/.local/bin` está en el PATH.
 
@@ -349,7 +359,7 @@ GorilaPlay/
 ├── assets/          icono (svg, png 1024/512/256, ico)
 ├── linux/           lanzador bash + motor de listas + carátulas + instalador
 ├── macos/           lanzador con diálogos del sistema + instalador
-├── windows/         port en PowerShell + lanzador .cmd
+├── windows/         instalador + port en PowerShell + lanzador .cmd
 ├── LICENSE
 └── README.md
 ```
