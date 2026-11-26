@@ -98,27 +98,66 @@ function Asegurar-YtDlp([System.Windows.Forms.RichTextBox]$log) {
     Escribir "yt-dlp listo." $log
 }
 
+function Url-FFmpeg {
+    # El mismo paquete de gyan.dev, pero servido por GitHub (mas rapido y fiable).
+    try {
+        $r = Invoke-RestMethod -Uri "https://api.github.com/repos/GyanD/codexffmpeg/releases/latest" `
+            -Headers @{ "User-Agent" = "GorilaPlay" } -TimeoutSec 30
+        $paquete = @($r.assets) | Where-Object { $_.name -like "*-essentials_build.zip" } | Select-Object -First 1
+        if ($paquete -and $paquete.browser_download_url) { return $paquete.browser_download_url }
+    }
+    catch { }
+    return "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+}
+
+function Extraer-FFmpeg([string]$zip) {
+    # Se sacan solo ffmpeg.exe y ffprobe.exe, sin descomprimir los 100 MB.
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+        $paquete = [IO.Compression.ZipFile]::OpenRead($zip)
+        try {
+            $copiados = 0
+            foreach ($entrada in $paquete.Entries) {
+                if ($entrada.Name -eq "ffmpeg.exe" -or $entrada.Name -eq "ffprobe.exe") {
+                    [IO.Compression.ZipFileExtensions]::ExtractToFile($entrada, (Join-Path $BinDir $entrada.Name), $true)
+                    $copiados++
+                }
+            }
+            if ($copiados -ge 2) { return }
+            throw "El paquete no trae los dos ejecutables."
+        }
+        finally { $paquete.Dispose() }
+    }
+    catch {
+        $tmp = Join-Path $env:TEMP ("gp_ffmpeg_" + [guid]::NewGuid().ToString("N"))
+        try {
+            Expand-Archive -Path $zip -DestinationPath $tmp -Force
+            foreach ($nombre in @("ffmpeg.exe", "ffprobe.exe")) {
+                $encontrado = Get-ChildItem -Path $tmp -Filter $nombre -Recurse -File | Select-Object -First 1
+                if (-not $encontrado) { throw "El paquete de FFmpeg no trae $nombre." }
+                Copy-Item -Force $encontrado.FullName (Join-Path $BinDir $nombre)
+            }
+        }
+        finally {
+            Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Asegurar-FFmpeg([System.Windows.Forms.RichTextBox]$log) {
     if ((Test-Path $FFmpeg) -and (Test-Path $FFprobe)) { return }
     # Si ya estan instalados y en el PATH, no se descarga nada.
     if ((Get-Command ffmpeg -ErrorAction SilentlyContinue) -and (Get-Command ffprobe -ErrorAction SilentlyContinue)) { return }
-    Escribir "Descargando FFmpeg (solo la primera vez, son unos 80 MB)..." $log
-    $id = [guid]::NewGuid().ToString("N")
-    $zip = Join-Path $env:TEMP "gp_ffmpeg_$id.zip"
-    $tmp = Join-Path $env:TEMP "gp_ffmpeg_$id"
+    Escribir "Descargando FFmpeg (unos 100 MB, solo la primera vez)..." $log
+    $zip = Join-Path $env:TEMP ("gp_ffmpeg_" + [guid]::NewGuid().ToString("N") + ".zip")
     try {
-        Descargar-Archivo "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" $zip
-        Expand-Archive -Path $zip -DestinationPath $tmp -Force
-        foreach ($nombre in @("ffmpeg.exe", "ffprobe.exe")) {
-            $encontrado = Get-ChildItem -Path $tmp -Filter $nombre -Recurse -File | Select-Object -First 1
-            if (-not $encontrado) { throw "El paquete de FFmpeg no trae $nombre." }
-            Copy-Item -Force $encontrado.FullName (Join-Path $BinDir $nombre)
-        }
+        Descargar-Archivo (Url-FFmpeg) $zip
+        Extraer-FFmpeg $zip
     }
     finally {
         Remove-Item -Force $zip -ErrorAction SilentlyContinue
-        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
+    if (-not (Tiene-FFmpeg)) { throw "No he podido preparar FFmpeg." }
     Escribir "FFmpeg listo." $log
 }
 
