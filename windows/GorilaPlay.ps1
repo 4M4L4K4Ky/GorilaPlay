@@ -11,7 +11,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $ErrorActionPreference = "Stop"
-$Version = "1.2.1"
+$Version = "1.2.2"
 
 # Windows PowerShell 5.1 no activa TLS 1.2 por defecto y GitHub lo exige.
 try {
@@ -215,15 +215,19 @@ function Similitud([string]$a, [string]$b) {
 function Levenshtein([string]$a, [string]$b) {
     $n = $a.Length; $m = $b.Length
     $d = New-Object 'int[,]' ($n + 1), ($m + 1)
-    for ($i = 0; $i -le $n; $i++) { $d[$i, 0] = $i }
-    for ($j = 0; $j -le $m; $j++) { $d[0, $j] = $j }
+    # Se usa Set/Get: Windows PowerShell 5.1 no admite $d[($i - 1), $j].
+    for ($i = 0; $i -le $n; $i++) { $d.Set($i, 0, $i) }
+    for ($j = 0; $j -le $m; $j++) { $d.Set(0, $j, $j) }
     for ($i = 1; $i -le $n; $i++) {
         for ($j = 1; $j -le $m; $j++) {
             $costo = if ($a[$i - 1] -eq $b[$j - 1]) { 0 } else { 1 }
-            $d[$i, $j] = [Math]::Min([Math]::Min($d[($i - 1), $j] + 1, $d[$i, ($j - 1)] + 1), $d[($i - 1), ($j - 1)] + $costo)
+            $borrar = $d.Get($i - 1, $j) + 1
+            $insertar = $d.Get($i, $j - 1) + 1
+            $cambiar = $d.Get($i - 1, $j - 1) + $costo
+            $d.Set($i, $j, [Math]::Min([Math]::Min($borrar, $insertar), $cambiar))
         }
     }
-    return $d[$n, $m]
+    return $d.Get($n, $m)
 }
 
 function Buscar-Nodo($obj, [string]$clave) {
